@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Экран со счетом - Турнирное табло</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #000;
+            color: #fff;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        .display-screen {
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+            position: relative;
+        }
+
+        .left-side {
+            flex: 1;
+            background: rgb(0, 0, 200);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .right-side {
+            flex: 1;
+            background: rgb(200, 0, 0);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .center-panel {
+            background: rgb(180, 180, 180);
+            width: 200px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #000;
+            position: relative;
+        }
+
+        .round-counter {
+            position: absolute;
+            top: 2vh;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 10vh;
+            font-weight: bold;
+            color: #fff;
+            z-index: 10;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .fighter-name {
+            font-size: 6vh;
+            margin-bottom: 4vh;
+            text-align: center;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .main-score {
+            font-size: 30vh;
+            font-weight: bold;
+            margin-bottom: 1vh;
+            text-shadow: 3px 3px 6px rgba(0,0,0,0.5);
+        }
+
+        .score-label {
+            font-size: 6vh;
+            margin-bottom: 2vh;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .rounds-score {
+            font-size: 15vh;
+            font-weight: bold;
+            margin-bottom: 0.5vh;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .rounds-label {
+            font-size: 3vh;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .timer {
+            font-size: 8vh;
+            font-weight: bold;
+            margin-bottom: 1vh;
+            color: #000;
+        }
+
+        .timer.active {
+            color: rgb(0, 150, 0);
+        }
+
+        .timer-label {
+            font-size: 6vh;
+            color: #000;
+        }
+
+        .status-info {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #fff;
+            font-size: 2vh;
+            text-align: center;
+            background: rgba(0,0,0,0.7);
+            padding: 10px 20px;
+            border-radius: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .center-panel {
+                width: 150px;
+            }
+
+            .main-score {
+                font-size: 20vh;
+            }
+
+            .rounds-score {
+                font-size: 10vh;
+            }
+
+            .fighter-name {
+                font-size: 4vh;
+            }
+
+            .timer {
+                font-size: 6vh;
+            }
+
+            .round-counter {
+                font-size: 6vh;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="display-screen">
+        <div class="left-side">
+            <div class="fighter-name" id="leftFighterName">Синий боец</div>
+            <div class="main-score" id="leftScore">0</div>
+            <div class="score-label">Счет</div>
+            <div class="rounds-score" id="leftRounds">0</div>
+            <div class="rounds-label">Раунды</div>
+        </div>
+
+        <div class="center-panel">
+            <div class="timer" id="timer">02:00</div>
+            <div class="timer-label">Время</div>
+        </div>
+
+        <div class="right-side">
+            <div class="fighter-name" id="rightFighterName">Красный боец</div>
+            <div class="main-score" id="rightScore">0</div>
+            <div class="score-label">Счет</div>
+            <div class="rounds-score" id="rightRounds">0</div>
+            <div class="rounds-label">Раунды</div>
+        </div>
+    </div>
+
+    <div class="round-counter" id="roundInfo">Раунд 1</div>
+
+    <div class="status-info" id="statusInfo">
+        F - полноэкранный режим | Обновляется автоматически
+    </div>
+
+    <script>
+        var gameData = {
+            redFighterName: "Красный боец",
+            blueFighterName: "Синий боец",
+            redScore: 0,
+            blueScore: 0,
+            redRounds: 0,
+            blueRounds: 0,
+            currentRound: 1,
+            timerRemaining: 120,
+            timerActive: false,
+            wallersteinMode: true
+        };
+
+        function updateDisplay(data) {
+            if (data) {
+                gameData = data;
+            }
+
+            // На экране счета красный всегда справа, синий слева
+            document.getElementById('leftFighterName').textContent = gameData.blueFighterName;
+            document.getElementById('rightFighterName').textContent = gameData.redFighterName;
+            document.getElementById('leftScore').textContent = gameData.blueScore;
+            document.getElementById('rightScore').textContent = gameData.redScore;
+            document.getElementById('leftRounds').textContent = gameData.blueRounds;
+            document.getElementById('rightRounds').textContent = gameData.redRounds;
+
+            // Обновляем таймер
+            var minutes = Math.floor(gameData.timerRemaining / 60);
+            var seconds = gameData.timerRemaining % 60;
+            var timeString = minutes.toString().padStart(2, '0') + ':' + seconds.toString().padStart(2, '0');
+
+            document.getElementById('timer').textContent = timeString;
+            document.getElementById('timer').className = gameData.timerActive ? 'timer active' : 'timer';
+
+            // Обновляем раунды
+            if (gameData.wallersteinMode) {
+                document.getElementById('roundInfo').textContent = 'Раунд ' + gameData.currentRound;
+                document.getElementById('roundInfo').style.display = 'block';
+                var roundsElements = document.querySelectorAll('.rounds-score, .rounds-label');
+                for (var i = 0; i < roundsElements.length; i++) {
+                    roundsElements[i].style.display = 'block';
+                }
+            } else {
+                document.getElementById('roundInfo').style.display = 'none';
+                var roundsElements = document.querySelectorAll('.rounds-score, .rounds-label');
+                for (var i = 0; i < roundsElements.length; i++) {
+                    roundsElements[i].style.display = 'none';
+                }
+            }
+        }
+
+        // Функция получения данных от родительского окна
+        function receiveData() {
+            try {
+                if (window.opener && !window.opener.closed) {
+                    var parentGameState = window.opener.gameState;
+                    if (parentGameState) {
+                        updateDisplay({
+                            redFighterName: parentGameState.redFighterName,
+                            blueFighterName: parentGameState.blueFighterName,
+                            redScore: parentGameState.redScore,
+                            blueScore: parentGameState.blueScore,
+                            redRounds: parentGameState.redRoundsWon,
+                            blueRounds: parentGameState.blueRoundsWon,
+                            currentRound: parentGameState.currentRound,
+                            timerRemaining: parentGameState.timerRemaining,
+                            timerActive: parentGameState.timerActive,
+                            wallersteinMode: parentGameState.wallersteinMode
+                        });
+                    }
+                }
+            } catch (e) {
+                console.log('Ошибка получения данных:', e);
+            }
+        }
+
+        // Обработка сообщений от родительского окна
+        window.addEventListener('message', function(event) {
+            if (event.data && event.data.type === 'gameStateUpdate') {
+                updateDisplay(event.data.gameState);
+            }
+        });
+
+        // Клавиша F для полноэкранного режима
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'f' || event.key === 'F') {
+                if (document.fullscreenElement) {
+                    document.exitFullscreen();
+                } else {
+                    document.documentElement.requestFullscreen();
+                }
+            }
+        });
+
+        // Периодическое обновление данных
+        setInterval(receiveData, 100);
+
+        // Инициализация
+        updateDisplay();
+        receiveData();
+    </script>
+</body>
+</html>
