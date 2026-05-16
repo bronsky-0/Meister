@@ -101,6 +101,14 @@
             text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
         }
 
+        .bonus-score {
+            font-size: 5vh;
+            font-weight: bold;
+            margin-bottom: 1vh;
+            color: rgb(255, 220, 0);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
         .timer {
             font-size: 8vh;
             font-weight: bold;
@@ -162,6 +170,7 @@
         <div class="left-side">
             <div class="fighter-name" id="leftFighterName">Синий боец</div>
             <div class="main-score" id="leftScore">0</div>
+            <div class="bonus-score" id="leftBonus" style="display: none;">Бонус: 0</div>
             <div class="score-label">Счет</div>
             <div class="rounds-score" id="leftRounds">0</div>
             <div class="rounds-label">Раунды</div>
@@ -175,6 +184,7 @@
         <div class="right-side">
             <div class="fighter-name" id="rightFighterName">Красный боец</div>
             <div class="main-score" id="rightScore">0</div>
+            <div class="bonus-score" id="rightBonus" style="display: none;">Бонус: 0</div>
             <div class="score-label">Счет</div>
             <div class="rounds-score" id="rightRounds">0</div>
             <div class="rounds-label">Раунды</div>
@@ -193,12 +203,15 @@
             blueFighterName: "Синий боец",
             redScore: 0,
             blueScore: 0,
+            redBonus: 0,
+            blueBonus: 0,
             redRounds: 0,
             blueRounds: 0,
             currentRound: 1,
             timerRemaining: 120,
             timerActive: false,
-            wallersteinMode: true
+            wallersteinMode: true,
+            hasBonusPoints: false
         };
 
         function updateDisplay(data) {
@@ -213,6 +226,18 @@
             document.getElementById('rightScore').textContent = gameData.redScore;
             document.getElementById('leftRounds').textContent = gameData.blueRounds;
             document.getElementById('rightRounds').textContent = gameData.redRounds;
+
+            var leftBonusEl = document.getElementById('leftBonus');
+            var rightBonusEl = document.getElementById('rightBonus');
+            if (gameData.hasBonusPoints) {
+                leftBonusEl.textContent = 'Бонус: ' + (gameData.blueBonus || 0);
+                rightBonusEl.textContent = 'Бонус: ' + (gameData.redBonus || 0);
+                leftBonusEl.style.display = 'block';
+                rightBonusEl.style.display = 'block';
+            } else {
+                leftBonusEl.style.display = 'none';
+                rightBonusEl.style.display = 'none';
+            }
 
             // Обновляем таймер
             var minutes = Math.floor(gameData.timerRemaining / 60);
@@ -250,12 +275,15 @@
                             blueFighterName: parentGameState.blueFighterName,
                             redScore: parentGameState.redScore,
                             blueScore: parentGameState.blueScore,
+                            redBonus: parentGameState.redBonus,
+                            blueBonus: parentGameState.blueBonus,
                             redRounds: parentGameState.redRoundsWon,
                             blueRounds: parentGameState.blueRoundsWon,
                             currentRound: parentGameState.currentRound,
                             timerRemaining: parentGameState.timerRemaining,
                             timerActive: parentGameState.timerActive,
-                            wallersteinMode: parentGameState.wallersteinMode
+                            wallersteinMode: parentGameState.ruleset === 'wallerstein',
+                            hasBonusPoints: parentGameState.ruleset === 'sidesword-rgf'
                         });
                     }
                 }
