@@ -693,10 +693,96 @@
         return gameState.poolMatches[poolId] || [];
     }
 
-    function getNextPendingPoolMatch(poolId) {
+    function isNetworkMode() {
+        return typeof NetworkSync !== 'undefined' && NetworkSync.isNetworkEnabled();
+    }
+
+    function isNetworkArenaDevice() {
+        return isNetworkMode() && NetworkSync.isArena();
+    }
+
+    function isNetworkHost() {
+        return isNetworkMode() && NetworkSync.isHost();
+    }
+
+    function getLocalArenaId() {
+        if (gameState.activeArenaId) return gameState.activeArenaId;
+        if (isNetworkArenaDevice()) return NetworkSync.getState().arenaId;
+        return null;
+    }
+
+    function isMatchAvailableForArena(match, arenaId) {
+        if (!match || match.status === 'done') return false;
+        if (match.status === 'pending') return true;
+        if (match.status === 'in_progress' && arenaId && match.arenaId === arenaId) return true;
+        return false;
+    }
+
+    function syncTournamentToServer() {
+        if (!isNetworkHost()) return Promise.resolve();
+        return NetworkSync.pushTournament(NetworkSync.getTournamentSnapshot(gameState)).catch(function(err) {
+            alert('Ошибка синхронизации: ' + (err.message || err));
+        });
+    }
+
+    function syncTournamentAfterFight() {
+        if (!isNetworkMode()) return Promise.resolve();
+        return NetworkSync.completeMatch(NetworkSync.getTournamentSnapshot(gameState)).catch(function(err) {
+            alert('Ошибка синхронизации результата: ' + (err.message || err));
+        });
+    }
+
+    function applyRemoteTournamentState(remoteState) {
+        if (!remoteState || !remoteState.tournament) return;
+        var t = remoteState.tournament;
+        var inFight = !!(gameState.activePoolMatchId || gameState.activeBracketMatch);
+
+        gameState.sessionMode = t.sessionMode || 'tournament';
+        gameState.ruleset = t.ruleset;
+        gameState.tournamentSystem = t.tournamentSystem;
+        gameState.participants = t.participants || [];
+        gameState.tournamentStage = t.tournamentStage;
+        gameState.pools = t.pools || [];
+        gameState.poolMatches = t.poolMatches || {};
+        gameState.bracket = t.bracket;
+        gameState.playoffStarted = !!t.playoffStarted;
+        gameState.qualifyingAdvancersCount = t.qualifyingAdvancersCount;
+        gameState.tournamentFightHistory = t.tournamentFightHistory || [];
+        gameState.tournamentMode = !!t.playoffStarted;
+
+        if (t.playoffStarted && !inFight) {
+            document.getElementById('startMenuOverlay').style.display = 'none';
+            document.getElementById('poolsOverlay').style.display = 'none';
+            if (isNetworkArenaDevice()) {
+                var waitEl = document.getElementById('arenaWaitOverlay');
+                if (waitEl) waitEl.style.display = 'none';
+            }
+            showSecretaryTerminal();
+        }
+
+        updateTournamentBar();
+        updateFormBracketButtons();
+        updateOpenBracketButton();
+        updatePlayoffTerminalButtons();
+
+        if (document.getElementById('poolSelectOverlay').style.display === 'flex') {
+            if (isNetworkMode()) showArenaMatchSelectModal();
+            else showPoolSelectModal();
+        }
+        if (gameState.bracket && document.getElementById('bracketOverlay').style.display === 'flex') {
+            renderBracket();
+        }
+
+        if (typeof global.onRemoteTournamentUpdated === 'function') {
+            global.onRemoteTournamentUpdated(remoteState);
+        }
+    }
+
+    function getNextPendingPoolMatch(poolId, arenaId) {
+        arenaId = arenaId || getLocalArenaId();
         var matches = getPoolMatches(poolId);
         for (var i = 0; i < matches.length; i++) {
-            if (matches[i].status === 'pending') return matches[i];
+            if (isMatchAvailableForArena(matches[i], arenaId)) return matches[i];
         }
         return null;
     }
@@ -737,7 +823,7 @@
     }
 
     function updateFormBracketButtons() {
-        var canForm = allPoolsComplete() && !gameState.bracket;
+        var canForm = allPoolsComplete() && !gameState.bracket && (!isNetworkMode() || isNetworkHost());
         var ids = ['formBracketBtn', 'formBracketBtnPool'];
         for (var i = 0; i < ids.length; i++) {
             var btn = document.getElementById(ids[i]);
@@ -758,8 +844,11 @@
 
         var poolBtn = document.getElementById('selectPoolBtn');
         if (poolBtn) {
-            if (bracketStage) poolBtn.classList.add('hidden');
-            else if (playoffOn) poolBtn.classList.remove('hidden');
+            if (bracketStage && !isNetworkMode()) poolBtn.classList.add('hidden');
+            else if (playoffOn) {
+                poolBtn.classList.remove('hidden');
+                poolBtn.textContent = isNetworkMode() ? 'Выбрать бой' : 'Выбрать пул';
+            }
         }
 
         var formIds = ['formBracketBtn', 'formBracketBtnPool'];
@@ -1141,9 +1230,199 @@
         return { advanced: false, fromLabel: '', toLabel: getActiveBracketRoundLabel() };
     }
 
-    function showPoolSelectModal() {
+    function getBracketMatchLabel(loc) {
+        if (loc.side === 'final') return 'Финал';
+        if (loc.side === 'bronze') return 'Бронза';
+        return getActiveBracketRoundLabel();
+    }
+
+    function collectAvailablePoolMatches(arenaId) {
+        var items = [];
+        for (var i = 0; i < gameState.pools.length; i++) {
+            var pool = gameState.pools[i];
+            var matches = getPoolMatches(pool.id);
+            for (var m = 0; m < matches.length; m++) {
+                var match = matches[m];
+                if (!isMatchAvailableForArena(match, arenaId)) continue;
+                items.push({
+                    type: 'pool',
+                    poolId: pool.id,
+                    matchId: match.id,
+                    match: match,
+                    label: 'Пул ' + pool.number + ': ' +
+                        getParticipantName(match.fighter1Id) + ' vs ' +
+                        getParticipantName(match.fighter2Id) +
+                        (match.status === 'in_progress' ? ' (продолжить)' : '')
+                });
+            }
+        }
+        return items;
+    }
+
+    function collectAvailableBracketMatches(arenaId) {
+        var items = [];
+        if (!gameState.bracket) return items;
+
+        function tryAdd(match, loc) {
+            if (!match || match.status === 'done') return;
+            if (match.status === 'in_progress') {
+                if (match.arenaId !== arenaId) return;
+            } else if (!canFightBracketMatch(match, loc)) {
+                return;
+            }
+            var f1 = getBracketDisplayFighter(match.fighter1, loc, match) || match.fighter1;
+            var f2 = getBracketDisplayFighter(match.fighter2, loc, match) || match.fighter2;
+            if (!f1 || !f2) return;
+            items.push({
+                type: 'bracket',
+                bracketLoc: { side: loc.side, roundIndex: loc.roundIndex, matchIndex: loc.matchIndex },
+                match: match,
+                label: getBracketMatchLabel(loc) + ': ' + f1.name + ' vs ' + f2.name
+            });
+        }
+
+        ['left', 'right'].forEach(function(side) {
+            var half = gameState.bracket[side];
+            if (!half || !half.rounds) return;
+            for (var r = 0; r < half.rounds.length; r++) {
+                for (var m = 0; m < half.rounds[r].length; m++) {
+                    tryAdd(half.rounds[r][m], { side: side, roundIndex: r, matchIndex: m });
+                }
+            }
+        });
+        tryAdd(gameState.bracket.thirdPlace, { side: 'bronze', roundIndex: 0, matchIndex: 0 });
+        tryAdd(gameState.bracket.final, { side: 'final', roundIndex: 0, matchIndex: 0 });
+        return items;
+    }
+
+    function readSelectedArenaId() {
+        var select = document.getElementById('arenaSelectInput');
+        if (select) {
+            var val = parseInt(select.value, 10);
+            if (val > 0) return val;
+        }
+        return getLocalArenaId() || 1;
+    }
+
+    function showArenaMatchSelectModal() {
         var list = document.getElementById('poolSelectList');
+        var title = document.getElementById('poolSelectTitle');
+        var arenaRow = document.getElementById('arenaSelectRow');
         list.innerHTML = '';
+
+        if (title) title.textContent = 'Выберите бой';
+        if (arenaRow) arenaRow.style.display = 'flex';
+
+        var arenaCount = NetworkSync.getState().arenaCount || 1;
+        var select = document.getElementById('arenaSelectInput');
+        if (select) {
+            select.innerHTML = '';
+            for (var a = 1; a <= arenaCount; a++) {
+                var opt = document.createElement('option');
+                opt.value = String(a);
+                opt.textContent = 'Площадка ' + a;
+                if (getLocalArenaId() === a) opt.selected = true;
+                select.appendChild(opt);
+            }
+            select.onchange = function() {
+                showArenaMatchSelectModal();
+            };
+        }
+
+        var arenaId = readSelectedArenaId();
+        var items = collectAvailablePoolMatches(arenaId).concat(collectAvailableBracketMatches(arenaId));
+
+        if (items.length === 0) {
+            var empty = document.createElement('p');
+            empty.className = 'participants-hint';
+            empty.textContent = 'Нет доступных боёв на выбранной площадке.';
+            list.appendChild(empty);
+        }
+
+        for (var i = 0; i < items.length; i++) {
+            (function(item) {
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'menu-button';
+                btn.textContent = item.label;
+                btn.onclick = function() {
+                    hidePoolSelectModal();
+                    startNetworkMatch(item, readSelectedArenaId());
+                };
+                list.appendChild(btn);
+            })(items[i]);
+        }
+
+        document.getElementById('poolSelectOverlay').style.display = 'flex';
+        updateTournamentBar();
+    }
+
+    function startNetworkMatch(item, arenaId) {
+        gameState.activeArenaId = arenaId;
+
+        function beginFight() {
+            if (item.type === 'pool') {
+                gameState.activePoolId = item.poolId;
+                gameState.activePoolMatchId = item.match.id;
+                gameState.tournamentStage = 'pool-fights';
+                loadPoolMatchIntoFight(item.match);
+            } else {
+                gameState.activeBracketMatch = item.bracketLoc;
+                gameState.tournamentStage = 'bracket-fights';
+                var match = getBracketMatch(item.bracketLoc);
+                var f1 = getBracketDisplayFighter(match.fighter1, item.bracketLoc, match) || match.fighter1;
+                var f2 = getBracketDisplayFighter(match.fighter2, item.bracketLoc, match) || match.fighter2;
+                resetFightState();
+                gameState.redFighterName = f1.name;
+                gameState.blueFighterName = f2.name;
+            }
+            gameState.sessionStarted = true;
+            gameState.tournamentMode = true;
+            document.getElementById('secretaryTerminal').classList.remove('hidden');
+            updateTournamentBar();
+            if (typeof updateDisplay === 'function') updateDisplay();
+        }
+
+        if (!isNetworkMode()) {
+            beginFight();
+            return;
+        }
+
+        var claimPromise;
+        if (item.type === 'pool') {
+            claimPromise = NetworkSync.claimMatch('pool', {
+                poolId: item.poolId,
+                matchId: item.matchId
+            }, arenaId);
+        } else {
+            claimPromise = NetworkSync.claimMatch('bracket', {
+                bracketLoc: item.bracketLoc
+            }, arenaId);
+        }
+
+        claimPromise.then(function(data) {
+            if (data.state && data.state.tournament) {
+                applyRemoteTournamentState(data.state);
+            }
+            beginFight();
+        }).catch(function(err) {
+            alert(err.message || 'Не удалось занять бой');
+            showArenaMatchSelectModal();
+        });
+    }
+
+    function showPoolSelectModal() {
+        if (isNetworkMode()) {
+            showArenaMatchSelectModal();
+            return;
+        }
+
+        var list = document.getElementById('poolSelectList');
+        var title = document.getElementById('poolSelectTitle');
+        var arenaRow = document.getElementById('arenaSelectRow');
+        list.innerHTML = '';
+        if (title) title.textContent = 'Какой пул провести?';
+        if (arenaRow) arenaRow.style.display = 'none';
 
         for (var i = 0; i < gameState.pools.length; i++) {
             var pool = gameState.pools[i];
@@ -1190,8 +1469,10 @@
 
         document.getElementById('poolsOverlay').style.display = 'none';
         showSecretaryTerminal();
-        showPoolSelectModal();
-        updateTournamentBar();
+        syncTournamentToServer().then(function() {
+            showPoolSelectModal();
+            updateTournamentBar();
+        });
     }
 
     function startPoolFights(poolId) {
@@ -1297,6 +1578,7 @@
                 alert('Этап пулов завершён. Нажмите «Сформировать сетку».');
             }
         }
+        syncTournamentAfterFight();
         return true;
     }
 
@@ -1316,6 +1598,9 @@
         if (gameState.activePoolId) {
             var pool = getPoolById(gameState.activePoolId);
             text += ' · Пул ' + (pool ? pool.number : '?');
+        }
+        if (gameState.activeArenaId) {
+            text += ' · Площадка ' + gameState.activeArenaId;
         }
         if (gameState.activePoolMatchMeta) {
             text += ' · ' + gameState.redFighterName + ' vs ' + gameState.blueFighterName;
@@ -1615,6 +1900,7 @@
             'Сетка сформирована: ' + advancers.length + ' участников. ' +
             'Сейчас открыт этап «' + getActiveBracketRoundLabel() + '».'
         );
+        syncTournamentToServer();
     }
 
     function previewBracketDemo(count) {
@@ -1897,6 +2183,22 @@
 
 
     function startBracketMatch(loc) {
+        if (isNetworkMode()) {
+            var match = getBracketMatch(loc);
+            if (!match) return;
+            var f1 = getBracketDisplayFighter(match.fighter1, loc, match) || match.fighter1;
+            var f2 = getBracketDisplayFighter(match.fighter2, loc, match) || match.fighter2;
+            hidePoolSelectModal();
+            document.getElementById('bracketOverlay').style.display = 'none';
+            startNetworkMatch({
+                type: 'bracket',
+                bracketLoc: { side: loc.side, roundIndex: loc.roundIndex, matchIndex: loc.matchIndex },
+                match: match,
+                label: getBracketMatchLabel(loc) + ': ' + f1.name + ' vs ' + f2.name
+            }, readSelectedArenaId());
+            return;
+        }
+
         var match = getBracketMatch(loc);
         if (!match || match.status === 'done' || !canFightBracketMatch(match, loc)) return;
 
@@ -1968,6 +2270,7 @@
             } else if (playoffProgress.advanced) {
                 alert('Этап «' + playoffProgress.fromLabel + '» завершён. Открыт этап «' + playoffProgress.toLabel + '».');
             }
+            syncTournamentAfterFight();
             return true;
         }
 
@@ -1988,6 +2291,7 @@
         } else if (progression.advanced) {
             alert('Этап «' + progression.fromLabel + '» завершён. Открыт этап «' + progression.toLabel + '».');
         }
+        syncTournamentAfterFight();
         return true;
     }
 
@@ -2110,7 +2414,11 @@
         playoffGoBack: playoffGoBack,
         updateTournamentBar: updateTournamentBar,
         resetPlayoffState: resetPlayoffState,
-        onSaveFightHook: onSaveFightHook
+        onSaveFightHook: onSaveFightHook,
+        applyRemoteTournamentState: applyRemoteTournamentState,
+        showArenaMatchSelectModal: showArenaMatchSelectModal,
+        syncTournamentToServer: syncTournamentToServer,
+        isNetworkMode: isNetworkMode
     };
 
     global.triggerImportParticipantsXlsx = triggerImportParticipantsXlsx;

@@ -1,0 +1,60 @@
+{
+  "name": "gladiagon",
+  "productName": "Gladiagon",
+  "version": "1.0.0",
+  "description": "Терминал секретаря и турнирное табло для HEMA",
+  "main": "electron/main.js",
+  "author": "Gladiagon",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "server": "node sync-server.js",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win",
+    "dist:linux": "electron-builder --linux"
+  },
+  "devDependencies": {
+    "electron": "^34.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.gladiagon.app",
+    "productName": "Gladiagon",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      "sync-server.js",
+      "network-sync.js",
+      "tournament-playoff.js",
+      "display_screen.html",
+      "secretary_terminal_updated .html",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.sports",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Game"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
