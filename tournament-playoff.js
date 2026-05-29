@@ -183,6 +183,10 @@
         if (gameState.pools.length === 0) {
             addPool();
         }
+        var defaultCount = Math.min(BRACKET_MAX_SIZE, gameState.participants.length);
+        if (defaultCount >= 2 && !readQualifyingAdvancersCount()) {
+            syncQualifyingAdvancersInputs(defaultCount);
+        }
         renderPoolsComposition();
     }
 
@@ -440,6 +444,209 @@
         });
     }
 
+    function shuffleArray(items) {
+        var arr = items.slice();
+        for (var i = arr.length - 1; i > 0; i--) {
+            var j = Math.floor(Math.random() * (i + 1));
+            var tmp = arr[i];
+            arr[i] = arr[j];
+            arr[j] = tmp;
+        }
+        return arr;
+    }
+
+    function randomInt(min, max) {
+        return min + Math.floor(Math.random() * (max - min + 1));
+    }
+
+    function randomizePoolsDistribution() {
+        if (!isPlayoffTournament()) {
+            alert('Доступно только для турнира «Плей-офф».');
+            return;
+        }
+        if (gameState.participants.length < 2) {
+            alert('Добавьте минимум двух участников.');
+            return;
+        }
+        if (gameState.pools.length === 0) {
+            alert('Сначала создайте хотя бы один пул.');
+            return;
+        }
+        if (!confirm('Случайно распределить всех участников по пулам? Текущее распределение будет сброшено.')) {
+            return;
+        }
+
+        gameState.poolMatches = {};
+        for (var p = 0; p < gameState.pools.length; p++) {
+            gameState.pools[p].participantIds = [];
+        }
+
+        var shuffledIds = shuffleArray(gameState.participants.map(function(participant) {
+            return participant.id;
+        }));
+
+        for (var i = 0; i < shuffledIds.length; i++) {
+            var pool = gameState.pools[i % gameState.pools.length];
+            pool.participantIds.push(shuffledIds[i]);
+        }
+
+        renderPoolsComposition();
+
+        var weakPools = [];
+        for (var k = 0; k < gameState.pools.length; k++) {
+            if (gameState.pools[k].participantIds.length < 2) {
+                weakPools.push(gameState.pools[k].number);
+            }
+        }
+        if (weakPools.length > 0) {
+            alert(
+                'Участники распределены. В пулах ' + weakPools.join(', ') +
+                ' меньше 2 человек — добавьте пул или перераспределите вручную.'
+            );
+        }
+    }
+
+    function stripPoolFightHistory(poolId) {
+        gameState.tournamentFightHistory = gameState.tournamentFightHistory.filter(function(entry) {
+            return !(entry.type === 'pool' && entry.poolId === poolId);
+        });
+    }
+
+    function completePoolMatchWithRandomResult(match) {
+        var pickRed = Math.random() < 0.5;
+        var winnerId = pickRed ? match.fighter1Id : match.fighter2Id;
+        var winnerSide = pickRed ? 'red' : 'blue';
+        var redScore = pickRed ? randomInt(8, 15) : randomInt(0, 7);
+        var blueScore = pickRed ? randomInt(0, 7) : randomInt(8, 15);
+
+        match.status = 'done';
+        match.winnerId = winnerId;
+        match.result = {
+            redScore: redScore,
+            blueScore: blueScore,
+            redBonus: 0,
+            blueBonus: 0,
+            redRoundsWon: pickRed ? 1 : 0,
+            blueRoundsWon: pickRed ? 0 : 1,
+            winnerSide: winnerSide,
+            date: new Date().toLocaleString('ru-RU'),
+            randomTest: true
+        };
+
+        gameState.tournamentFightHistory.push({
+            type: 'pool',
+            poolId: match.poolId,
+            matchId: match.id,
+            fighter1: getParticipantName(match.fighter1Id),
+            fighter2: getParticipantName(match.fighter2Id),
+            winnerId: winnerId,
+            result: match.result
+        });
+    }
+
+    function applyRandomResultsToPool(poolId, skipConfirm) {
+        var pool = getPoolById(poolId);
+        if (!pool || pool.participantIds.length < 2) return false;
+
+        if (!gameState.poolMatches[poolId] || gameState.poolMatches[poolId].length === 0) {
+            generatePoolMatches(poolId);
+        }
+
+        var matches = getPoolMatches(poolId);
+        var hasDone = matches.some(function(m) { return m.status === 'done'; });
+
+        if (!skipConfirm && hasDone && !confirm(
+            'Пересчитать все бои пула «' + pool.number + '» случайными результатами?'
+        )) {
+            return false;
+        }
+
+        stripPoolFightHistory(poolId);
+
+        for (var i = 0; i < matches.length; i++) {
+            completePoolMatchWithRandomResult(matches[i]);
+        }
+
+        if (gameState.activePoolId === poolId) {
+            gameState.activePoolId = null;
+            gameState.activePoolMatchId = null;
+            gameState.activePoolMatchMeta = null;
+        }
+
+        return true;
+    }
+
+    function randomizePoolFightResults(poolId) {
+        if (!isPlayoffTournament()) {
+            alert('Доступно только для турнира «Плей-офф».');
+            return;
+        }
+
+        var pool = getPoolById(poolId);
+        if (!pool) return;
+
+        if (pool.participantIds.length < 2) {
+            alert('В пуле «' + pool.number + '» меньше 2 участников.');
+            return;
+        }
+
+        if (!applyRandomResultsToPool(poolId, false)) return;
+
+        updateTournamentBar();
+
+        if (document.getElementById('poolSelectOverlay').style.display === 'flex') {
+            showPoolSelectModal();
+        }
+    }
+
+    function randomizeAllPoolFightResults() {
+        if (!isPlayoffTournament()) {
+            alert('Доступно только для турнира «Плей-офф».');
+            return;
+        }
+        if (gameState.pools.length === 0) {
+            alert('Нет пулов.');
+            return;
+        }
+
+        if (!confirm('Случайно провести все бои во всех пулах?')) {
+            return;
+        }
+
+        var applied = 0;
+        for (var i = 0; i < gameState.pools.length; i++) {
+            if (applyRandomResultsToPool(gameState.pools[i].id, true)) {
+                applied++;
+            }
+        }
+
+        gameState.activePoolId = null;
+        gameState.activePoolMatchId = null;
+        gameState.activePoolMatchMeta = null;
+        updateTournamentBar();
+
+        if (document.getElementById('poolSelectOverlay').style.display === 'flex') {
+            showPoolSelectModal();
+        }
+
+        if (applied === 0) {
+            alert('Ни в одном пуле нет минимум 2 участников.');
+            return;
+        }
+
+        if (allPoolsComplete()) {
+            alert('Все бои пулов проведены (случайные результаты). Можно сформировать сетку.');
+        }
+    }
+
+    function randomizeCurrentPoolFightResults() {
+        if (gameState.activePoolId) {
+            randomizePoolFightResults(gameState.activePoolId);
+        } else {
+            randomizeAllPoolFightResults();
+        }
+    }
+
     function validatePoolsForStart() {
         if (gameState.pools.length === 0) {
             alert('Создайте хотя бы один пул.');
@@ -523,6 +730,12 @@
         document.getElementById('secretaryTerminal').classList.remove('hidden');
     }
 
+    function isBracketStageActive() {
+        return !!gameState.bracket ||
+            gameState.tournamentStage === 'bracket' ||
+            gameState.tournamentStage === 'bracket-fights';
+    }
+
     function updateFormBracketButtons() {
         var canForm = allPoolsComplete() && !gameState.bracket;
         var ids = ['formBracketBtn', 'formBracketBtnPool'];
@@ -536,6 +749,30 @@
             btn.classList.remove('hidden');
             btn.disabled = !canForm;
             btn.title = canForm ? '' : 'Сначала проведите все бои во всех пулах';
+        }
+    }
+
+    function updatePlayoffTerminalButtons() {
+        var bracketStage = isBracketStageActive();
+        var playoffOn = isPlayoffSessionActive();
+
+        var poolBtn = document.getElementById('selectPoolBtn');
+        if (poolBtn) {
+            if (bracketStage) poolBtn.classList.add('hidden');
+            else if (playoffOn) poolBtn.classList.remove('hidden');
+        }
+
+        var formIds = ['formBracketBtn', 'formBracketBtnPool'];
+        for (var f = 0; f < formIds.length; f++) {
+            var formBtn = document.getElementById(formIds[f]);
+            if (!formBtn) continue;
+            if (bracketStage) formBtn.classList.add('hidden');
+        }
+
+        var randomPoolBtn = document.getElementById('randomPoolResultsBtn');
+        if (randomPoolBtn) {
+            if (bracketStage) randomPoolBtn.classList.add('hidden');
+            else if (playoffOn) randomPoolBtn.classList.remove('hidden');
         }
     }
 
@@ -585,6 +822,323 @@
             }
         }
         return bestId;
+    }
+
+    function readQualifyingAdvancersCount() {
+        var ids = ['qualifyingAdvancersInput', 'qualifyingAdvancersInputPool'];
+        for (var i = 0; i < ids.length; i++) {
+            var el = document.getElementById(ids[i]);
+            if (el && el.value !== '') {
+                var val = parseInt(el.value, 10);
+                if (!isNaN(val)) return val;
+            }
+        }
+        if (gameState.qualifyingAdvancersCount) {
+            return gameState.qualifyingAdvancersCount;
+        }
+        return null;
+    }
+
+    function syncQualifyingAdvancersInputs(count) {
+        var text = count != null && count !== '' ? String(count) : '';
+        var ids = ['qualifyingAdvancersInput', 'qualifyingAdvancersInputPool'];
+        for (var i = 0; i < ids.length; i++) {
+            var el = document.getElementById(ids[i]);
+            if (el) el.value = text;
+        }
+        gameState.qualifyingAdvancersCount = count;
+    }
+
+    function getGlobalPoolStandings() {
+        var stats = {};
+        for (var i = 0; i < gameState.participants.length; i++) {
+            var participant = gameState.participants[i];
+            stats[participant.id] = {
+                participantId: participant.id,
+                name: participant.name,
+                wins: 0,
+                losses: 0
+            };
+        }
+
+        for (var poolId in gameState.poolMatches) {
+            if (!gameState.poolMatches.hasOwnProperty(poolId)) continue;
+            var matches = gameState.poolMatches[poolId];
+            for (var m = 0; m < matches.length; m++) {
+                var match = matches[m];
+                if (match.status !== 'done' || !match.winnerId) continue;
+                if (stats[match.winnerId]) stats[match.winnerId].wins++;
+                var loserId = match.winnerId === match.fighter1Id ?
+                    match.fighter2Id : match.fighter1Id;
+                if (stats[loserId]) stats[loserId].losses++;
+            }
+        }
+
+        var list = [];
+        for (var id in stats) {
+            if (stats.hasOwnProperty(id)) list.push(stats[id]);
+        }
+
+        list.sort(function(a, b) {
+            if (b.wins !== a.wins) return b.wins - a.wins;
+            if (a.losses !== b.losses) return a.losses - b.losses;
+            return a.name.localeCompare(b.name, 'ru');
+        });
+        return list;
+    }
+
+    function selectAdvancersForBracket(count) {
+        var standings = getGlobalPoolStandings();
+        if (standings.length < count) return null;
+
+        return standings.slice(0, count).map(function(row, index) {
+            return {
+                participantId: row.participantId,
+                name: row.name,
+                fromPool: null,
+                seed: index + 1,
+                poolWins: row.wins,
+                poolLosses: row.losses
+            };
+        });
+    }
+
+    function getLastSideRoundIndex() {
+        if (!gameState.bracket || !gameState.bracket.left.rounds.length) return 0;
+        return gameState.bracket.left.rounds.length - 1;
+    }
+
+    function ensureBracketPlayoffFields() {
+        if (!gameState.bracket) return;
+        if (!gameState.bracket.thirdPlace) {
+            gameState.bracket.thirdPlace = createBracketMatch('br_bronze', null, null);
+        }
+        if (!gameState.bracket.playoffPhase) {
+            var maxR = getLastSideRoundIndex();
+            if (gameState.bracket.activeRoundIndex <= maxR) {
+                gameState.bracket.playoffPhase = 'side';
+            } else if (gameState.bracket.thirdPlace.status !== 'done') {
+                gameState.bracket.playoffPhase = 'bronze';
+            } else if (gameState.bracket.final.status !== 'done') {
+                gameState.bracket.playoffPhase = 'final';
+            } else {
+                gameState.bracket.playoffPhase = 'complete';
+            }
+        }
+    }
+
+    function isBronzeRoundActive() {
+        if (!gameState.bracket) return false;
+        ensureBracketPlayoffFields();
+        return gameState.bracket.playoffPhase === 'bronze';
+    }
+
+    function isFinalRoundActive() {
+        if (!gameState.bracket) return false;
+        ensureBracketPlayoffFields();
+        return gameState.bracket.playoffPhase === 'final';
+    }
+
+    function areSemifinalsComplete() {
+        if (!gameState.bracket) return false;
+        var maxR = getLastSideRoundIndex();
+        return isSideRoundComplete('left', maxR) && isSideRoundComplete('right', maxR);
+    }
+
+    function getSemiFinalMatch(side) {
+        var maxR = getLastSideRoundIndex();
+        var round = gameState.bracket[side].rounds[maxR];
+        return round && round.length ? round[0] : null;
+    }
+
+    function getMatchLoser(match) {
+        if (!match || match.status !== 'done' || !match.winner) return null;
+        if (match.winner === match.fighter1) return match.fighter2;
+        if (match.winner === match.fighter2) return match.fighter1;
+        return null;
+    }
+
+    function syncBronzeFightersFromSemis() {
+        if (!gameState.bracket || !areSemifinalsComplete()) return;
+
+        var leftLoser = getMatchLoser(getSemiFinalMatch('left'));
+        var rightLoser = getMatchLoser(getSemiFinalMatch('right'));
+
+        if (leftLoser && !leftLoser.isBye) {
+            gameState.bracket.thirdPlace.fighter1 = leftLoser;
+        }
+        if (rightLoser && !rightLoser.isBye) {
+            gameState.bracket.thirdPlace.fighter2 = rightLoser;
+        }
+    }
+
+    function resolveBronzeByesIfNeeded() {
+        if (!gameState.bracket) return false;
+        var match = gameState.bracket.thirdPlace;
+        if (!match || match.status === 'done') return false;
+
+        var f1 = match.fighter1;
+        var f2 = match.fighter2;
+        var f1Ok = f1 && !f1.isBye;
+        var f2Ok = f2 && !f2.isBye;
+
+        if (f1Ok && f2Ok) return false;
+
+        if (f1Ok && !f2Ok) {
+            match.winner = f1;
+            match.status = 'done';
+            return true;
+        }
+        if (f2Ok && !f1Ok) {
+            match.winner = f2;
+            match.status = 'done';
+            return true;
+        }
+
+        match.status = 'done';
+        match.winner = null;
+        return true;
+    }
+
+    function enterBronzePlayoffPhase() {
+        if (!gameState.bracket) return;
+        syncBronzeFightersFromSemis();
+        gameState.bracket.playoffPhase = 'bronze';
+        if (resolveBronzeByesIfNeeded()) {
+            tryAdvancePlayoffPhase(false);
+        } else {
+            resolveBracketByesInMatch(gameState.bracket.thirdPlace, { side: 'bronze' });
+        }
+    }
+
+    function enterFinalPlayoffPhase() {
+        if (!gameState.bracket) return;
+        gameState.bracket.playoffPhase = 'final';
+        resolveBracketByesInMatch(gameState.bracket.final, { side: 'final' });
+    }
+
+    function tryAdvancePlayoffPhase(showAlert) {
+        if (!gameState.bracket) {
+            return { advanced: false, fromLabel: '', toLabel: '' };
+        }
+
+        ensureBracketPlayoffFields();
+        var fromLabel = getActiveBracketRoundLabel();
+        var advanced = false;
+
+        if (gameState.bracket.playoffPhase === 'bronze' &&
+            gameState.bracket.thirdPlace.status === 'done') {
+            enterFinalPlayoffPhase();
+            advanced = true;
+        } else if (gameState.bracket.playoffPhase === 'final' &&
+            gameState.bracket.final.status === 'done') {
+            gameState.bracket.playoffPhase = 'complete';
+            advanced = true;
+        }
+
+        return {
+            advanced: advanced,
+            fromLabel: fromLabel,
+            toLabel: getActiveBracketRoundLabel()
+        };
+    }
+
+    function isSideRoundComplete(side, roundIndex) {
+        var round = gameState.bracket[side].rounds[roundIndex];
+        if (!round) return true;
+        for (var i = 0; i < round.length; i++) {
+            if (round[i].status !== 'done') return false;
+        }
+        return true;
+    }
+
+    function isCurrentBracketRoundComplete() {
+        if (!gameState.bracket) return false;
+        ensureBracketPlayoffFields();
+        if (gameState.bracket.playoffPhase === 'bronze') {
+            return gameState.bracket.thirdPlace.status === 'done';
+        }
+        if (gameState.bracket.playoffPhase === 'final') {
+            return gameState.bracket.final.status === 'done';
+        }
+        if (gameState.bracket.playoffPhase === 'complete') return true;
+        var ri = gameState.bracket.activeRoundIndex;
+        return isSideRoundComplete('left', ri) && isSideRoundComplete('right', ri);
+    }
+
+    function getBracketDisplayFighter(fighter, loc, match) {
+        if (!fighter) return null;
+        return fighter;
+    }
+
+    function getActiveBracketRoundLabel() {
+        if (!gameState.bracket) return '';
+        ensureBracketPlayoffFields();
+        if (gameState.bracket.playoffPhase === 'bronze') return 'Бой за 3-е место';
+        if (gameState.bracket.playoffPhase === 'final') return 'Финал';
+        if (gameState.bracket.playoffPhase === 'complete') return 'Турнир завершён';
+        return getSideRoundTitle(
+            gameState.bracket.activeRoundIndex,
+            gameState.bracket.size
+        );
+    }
+
+    function getBracketRoundLabel(roundIndex) {
+        if (!gameState.bracket) return '';
+        if (roundIndex > getLastSideRoundIndex()) return 'Плей-офф';
+        return getSideRoundTitle(roundIndex, gameState.bracket.size);
+    }
+
+    function tryAdvanceBracketRound() {
+        if (!gameState.bracket) {
+            return { advanced: false, fromIndex: 0, fromLabel: '', toLabel: '' };
+        }
+
+        var maxSideRound = getLastSideRoundIndex();
+        var fromIndex = gameState.bracket.activeRoundIndex;
+        var advanced = false;
+
+        resolveBracketByesInRound(gameState.bracket.activeRoundIndex);
+
+        while (gameState.bracket.activeRoundIndex <= maxSideRound) {
+            resolveBracketByesInRound(gameState.bracket.activeRoundIndex);
+
+            if (!isSideRoundComplete('left', gameState.bracket.activeRoundIndex) ||
+                !isSideRoundComplete('right', gameState.bracket.activeRoundIndex)) {
+                break;
+            }
+
+            gameState.bracket.activeRoundIndex++;
+            advanced = true;
+            resolveBracketByesInRound(gameState.bracket.activeRoundIndex);
+        }
+
+        if (gameState.bracket.activeRoundIndex > maxSideRound) {
+            if (gameState.bracket.playoffPhase === 'side' || !gameState.bracket.playoffPhase) {
+                enterBronzePlayoffPhase();
+                advanced = true;
+            } else {
+                tryAdvancePlayoffPhase(false);
+            }
+        }
+
+        return {
+            advanced: advanced,
+            fromIndex: fromIndex,
+            fromLabel: getBracketRoundLabel(fromIndex),
+            toLabel: getActiveBracketRoundLabel()
+        };
+    }
+
+    function syncBracketRoundProgression() {
+        if (!gameState.bracket) return { advanced: false, fromLabel: '', toLabel: '' };
+        ensureBracketPlayoffFields();
+        if (gameState.bracket.playoffPhase === 'side') {
+            resolveBracketByesInRound(gameState.bracket.activeRoundIndex);
+            return tryAdvanceBracketRound();
+        }
+        tryAdvancePlayoffPhase(false);
+        return { advanced: false, fromLabel: '', toLabel: getActiveBracketRoundLabel() };
     }
 
     function showPoolSelectModal() {
@@ -767,7 +1321,7 @@
             text += ' · ' + gameState.redFighterName + ' vs ' + gameState.blueFighterName;
         }
         if (gameState.tournamentStage === 'bracket' || gameState.tournamentStage === 'bracket-fights') {
-            text += ' · Сетка на выбывание';
+            text += ' · Сетка · ' + getActiveBracketRoundLabel();
         } else if (allPoolsComplete() && !gameState.bracket) {
             text += ' · Пулы завершены';
         }
@@ -775,6 +1329,7 @@
 
         updateFormBracketButtons();
         updateOpenBracketButton();
+        updatePlayoffTerminalButtons();
     }
 
     function nextPowerOfTwo(n) {
@@ -795,8 +1350,9 @@
     }
 
     var BRACKET_MAX_SIZE = 32;
-    var BRACKET_SLOT_HEIGHT = 33;
-    var BRACKET_SLOT_GAP = 10;
+    var BRACKET_SLOT_HEIGHT = 28;
+    var BRACKET_SLOT_GAP = 8;
+    var BRACKET_LABEL_OFFSET = 24;
 
     function getBracketCapacity(count) {
         var size = nextPowerOfTwo(Math.max(count, 2));
@@ -883,13 +1439,22 @@
     function getBracketMatch(loc) {
         if (!gameState.bracket) return null;
         if (loc.side === 'final') return gameState.bracket.final;
+        if (loc.side === 'bronze') return gameState.bracket.thirdPlace;
         return gameState.bracket[loc.side].rounds[loc.roundIndex][loc.matchIndex];
+    }
+
+    function assignSemiLoserToBronze(side, loc) {
+        var match = gameState.bracket[side].rounds[loc.roundIndex][loc.matchIndex];
+        var loser = getMatchLoser(match);
+        if (!loser || loser.isBye) return;
+        if (side === 'left') gameState.bracket.thirdPlace.fighter1 = loser;
+        else gameState.bracket.thirdPlace.fighter2 = loser;
     }
 
     function advanceBracketWinnerSilent(loc, winner) {
         if (!winner || !gameState.bracket) return;
 
-        if (loc.side === 'final') return;
+        if (loc.side === 'final' || loc.side === 'bronze') return;
 
         var half = gameState.bracket[loc.side];
         var nextRoundIndex = loc.roundIndex + 1;
@@ -897,6 +1462,7 @@
         if (nextRoundIndex >= half.rounds.length) {
             if (loc.side === 'left') gameState.bracket.final.fighter1 = winner;
             else gameState.bracket.final.fighter2 = winner;
+            assignSemiLoserToBronze(side, loc);
             return;
         }
 
@@ -919,37 +1485,46 @@
         return true;
     }
 
-    function resolveBracketByes() {
-        if (!gameState.bracket) return;
+    function resolveBracketByesInRound(roundIndex) {
+        if (!gameState.bracket || roundIndex < 0) return;
 
         var changed = true;
+        var maxSideRound = getLastSideRoundIndex();
+
         while (changed) {
             changed = false;
-            for (var s = 0; s < 2; s++) {
-                var sideName = s === 0 ? 'left' : 'right';
-                var rounds = gameState.bracket[sideName].rounds;
-                for (var r = 0; r < rounds.length; r++) {
-                    for (var m = 0; m < rounds[r].length; m++) {
-                        if (resolveBracketByesInMatch(rounds[r][m], {
+            if (roundIndex <= maxSideRound) {
+                for (var s = 0; s < 2; s++) {
+                    var sideName = s === 0 ? 'left' : 'right';
+                    var round = gameState.bracket[sideName].rounds[roundIndex];
+                    if (!round) continue;
+                    for (var m = 0; m < round.length; m++) {
+                        if (resolveBracketByesInMatch(round[m], {
                             side: sideName,
-                            roundIndex: r,
+                            roundIndex: roundIndex,
                             matchIndex: m
                         })) {
                             changed = true;
                         }
                     }
                 }
-            }
-            if (resolveBracketByesInMatch(gameState.bracket.final, { side: 'final' })) {
-                changed = true;
+            } else if (isBronzeRoundActive()) {
+                if (resolveBracketByesInMatch(gameState.bracket.thirdPlace, { side: 'bronze' })) {
+                    changed = true;
+                }
+            } else if (isFinalRoundActive()) {
+                if (resolveBracketByesInMatch(gameState.bracket.final, { side: 'final' })) {
+                    changed = true;
+                }
             }
         }
     }
 
     function computeBracketMatchOffsets(matchCount, roundIndex) {
+        var blockH = getBracketMatchBlockHeight();
         if (roundIndex === 0) {
             var offsets = [];
-            var step = (BRACKET_SLOT_HEIGHT * 2 + BRACKET_SLOT_GAP) * 2;
+            var step = blockH + BRACKET_SLOT_GAP;
             for (var i = 0; i < matchCount; i++) {
                 offsets.push(i * step);
             }
@@ -957,15 +1532,23 @@
         }
         var prev = computeBracketMatchOffsets(matchCount * 2, roundIndex - 1);
         var offsets = [];
-        var block = BRACKET_SLOT_HEIGHT * 2 + BRACKET_SLOT_GAP;
         for (var j = 0; j < matchCount; j++) {
-            offsets.push((prev[j * 2] + prev[j * 2 + 1] + block) / 2);
+            // Верх следующей пары — середина между верхами двух пар предыдущего раунда
+            offsets.push((prev[j * 2] + prev[j * 2 + 1]) / 2);
         }
         return offsets;
     }
 
-    function getBracketMatchMarginTop(roundIndex, matchIndex, matchCount) {
+    function getBracketMatchAbsoluteTop(roundIndex, matchIndex, matchCount) {
         return computeBracketMatchOffsets(matchCount, roundIndex)[matchIndex] || 0;
+    }
+
+    function getBracketMatchMarginTop(roundIndex, matchIndex, matchCount) {
+        var top = getBracketMatchAbsoluteTop(roundIndex, matchIndex, matchCount);
+        if (matchIndex === 0) return top;
+        var blockH = getBracketMatchBlockHeight();
+        var prevTop = getBracketMatchAbsoluteTop(roundIndex, matchIndex - 1, matchCount);
+        return top - prevTop - blockH;
     }
 
     function openBracketOverlay() {
@@ -983,12 +1566,16 @@
         gameState.bracket = {
             size: bracketSize,
             advancers: advancers,
+            qualifyingCount: advancers.length,
+            activeRoundIndex: 0,
             left: { rounds: buildHalfBracket(leftSlots, 'left') },
             right: { rounds: buildHalfBracket(rightSlots, 'right') },
-            final: createBracketMatch('br_final', null, null)
+            thirdPlace: createBracketMatch('br_bronze', null, null),
+            final: createBracketMatch('br_final', null, null),
+            playoffPhase: 'side'
         };
         gameState.tournamentStage = 'bracket';
-        resolveBracketByes();
+        resolveBracketByesInRound(0);
     }
 
     function formBracket() {
@@ -1002,31 +1589,32 @@
             return;
         }
 
-        var sortedPools = gameState.pools.slice().sort(function(a, b) {
-            return a.number - b.number;
-        });
-        var advancers = [];
-        for (var i = 0; i < sortedPools.length; i++) {
-            var winnerId = getPoolWinnerId(sortedPools[i].id);
-            if (winnerId) {
-                advancers.push({
-                    participantId: winnerId,
-                    name: getParticipantName(winnerId),
-                    fromPool: sortedPools[i].number,
-                    seed: i + 1
-                });
-            }
+        var count = readQualifyingAdvancersCount();
+        if (!count || count < 2) {
+            alert('Укажите, сколько участников проходит в сетку (от 2 до ' + BRACKET_MAX_SIZE + ').');
+            return;
+        }
+        if (count > BRACKET_MAX_SIZE) {
+            count = BRACKET_MAX_SIZE;
         }
 
-        if (advancers.length < 2) {
-            alert('Недостаточно победителей пулов для сетки.');
+        var advancers = selectAdvancersForBracket(count);
+        if (!advancers || advancers.length < 2) {
+            alert('Недостаточно участников с результатами пулов для формирования сетки.');
             return;
         }
 
+        syncQualifyingAdvancersInputs(count);
         buildBracketFromAdvancers(advancers);
         renderBracket();
         updateTournamentBar();
+        updatePlayoffTerminalButtons();
         openBracketOverlay();
+
+        alert(
+            'Сетка сформирована: ' + advancers.length + ' участников. ' +
+            'Сейчас открыт этап «' + getActiveBracketRoundLabel() + '».'
+        );
     }
 
     function previewBracketDemo(count) {
@@ -1074,27 +1662,74 @@
         previewBracketDemo(count);
     }
 
+    function getBracketMatchBlockHeight() {
+        return BRACKET_SLOT_HEIGHT * 2;
+    }
+
+    function addBracketJoinsToColumn(col, sideName, roundIndex, matchCount, isLastColumn) {
+        if (isLastColumn || matchCount < 2) return;
+
+        var layer = document.createElement('div');
+        layer.className = 'bracket-joins';
+        var blockH = getBracketMatchBlockHeight();
+
+        for (var m = 0; m < matchCount; m += 2) {
+            if (m + 1 >= matchCount) break;
+            var topM = BRACKET_LABEL_OFFSET + getBracketMatchAbsoluteTop(roundIndex, m, matchCount);
+            var topM1 = BRACKET_LABEL_OFFSET + getBracketMatchAbsoluteTop(roundIndex, m + 1, matchCount);
+            var center1 = topM + blockH / 2;
+            var center2 = topM1 + blockH / 2;
+            var join = document.createElement('div');
+            join.className = 'bracket-join' + (sideName === 'right' ? ' is-right' : '');
+            join.style.top = center1 + 'px';
+            join.style.height = Math.max(2, center2 - center1) + 'px';
+            layer.appendChild(join);
+        }
+        col.appendChild(layer);
+    }
+
     function formatBracketFighter(fighter) {
-        if (!fighter) return { text: 'Ожидание', className: 'tbd' };
+        if (!fighter) return { text: '\u00a0', className: 'tbd' };
         if (fighter.isBye) return { text: 'BYE', className: 'tbd' };
         return { text: fighter.name, className: '' };
     }
 
-    function createBracketSlotEl(fighter, match) {
-        var info = formatBracketFighter(fighter);
-        var slot = document.createElement('div');
-        slot.className = 'bracket-slot ' + info.className;
-        if (match.winner && match.winner === fighter && fighter && !fighter.isBye) {
-            slot.classList.add('winner-slot');
-        }
-        slot.textContent = info.text;
-        slot.title = info.text;
-        return slot;
+    function formatBracketMatchScore(match) {
+        if (!match || !match.result) return '';
+        return match.result.redScore + ' : ' + match.result.blueScore;
     }
 
-    function canFightBracketMatch(match) {
-        return match.status === 'pending' && match.fighter1 && match.fighter2 &&
-            !match.fighter1.isBye && !match.fighter2.isBye;
+    function createBracketFighterRowEl(fighter, match, loc, position) {
+        var info = formatBracketFighter(fighter);
+        var row = document.createElement('div');
+        row.className = 'bracket-fighter-row ' + position + ' ' + info.className;
+        if (match.winner && match.winner === fighter && fighter && !fighter.isBye) {
+            row.classList.add('winner-row');
+        }
+        row.textContent = info.text;
+        row.title = info.text.trim() || '';
+        return row;
+    }
+
+    function isBracketMatchReady(match) {
+        if (!match || match.status !== 'pending') return false;
+        if (!match.fighter1 || !match.fighter2) return false;
+        if (match.fighter1.isBye || match.fighter2.isBye) return false;
+        return true;
+    }
+
+    function canFightBracketMatch(match, loc) {
+        if (!match || !gameState.bracket) return false;
+
+        if (loc.side === 'bronze') {
+            if (!isBronzeRoundActive()) return false;
+        } else if (loc.side === 'final') {
+            if (!isFinalRoundActive()) return false;
+        } else if (loc.roundIndex !== gameState.bracket.activeRoundIndex) {
+            return false;
+        }
+
+        return isBracketMatchReady(match);
     }
 
     function createBracketMatchEl(match, loc, matchCount) {
@@ -1102,10 +1737,29 @@
         card.className = 'bracket-match' + (match.status === 'done' ? ' done' : '');
         card.style.marginTop = getBracketMatchMarginTop(loc.roundIndex, loc.matchIndex, matchCount) + 'px';
 
-        card.appendChild(createBracketSlotEl(match.fighter1, match));
-        card.appendChild(createBracketSlotEl(match.fighter2, match));
+        var pairBox = document.createElement('div');
+        pairBox.className = 'bracket-match-pair';
+        if (loc.side === 'bronze' && isBronzeRoundActive()) {
+            pairBox.classList.add('bracket-pair-active');
+        } else if (loc.side !== 'final' && loc.roundIndex === gameState.bracket.activeRoundIndex) {
+            pairBox.classList.add('bracket-pair-active');
+        } else if (loc.side === 'final' && isFinalRoundActive()) {
+            pairBox.classList.add('bracket-pair-active');
+        }
 
-        if (canFightBracketMatch(match)) {
+        var f1 = getBracketDisplayFighter(match.fighter1, loc, match);
+        var f2 = getBracketDisplayFighter(match.fighter2, loc, match);
+        pairBox.appendChild(createBracketFighterRowEl(f1, match, loc, 'top'));
+        pairBox.appendChild(createBracketFighterRowEl(f2, match, loc, 'bottom'));
+        card.appendChild(pairBox);
+
+        if (match.status === 'done' && match.result) {
+            var scoreEl = document.createElement('div');
+            scoreEl.className = 'bracket-match-score';
+            scoreEl.textContent = formatBracketMatchScore(match);
+            scoreEl.title = 'Счёт боя';
+            card.appendChild(scoreEl);
+        } else if (canFightBracketMatch(match, loc)) {
             var btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'menu-button bracket-fight-btn';
@@ -1130,6 +1784,12 @@
         for (var r = 0; r < half.rounds.length; r++) {
             var col = document.createElement('div');
             col.className = 'bracket-column';
+            if (r === half.rounds.length - 1) {
+                col.classList.add('is-semifinal');
+            }
+            if (r === gameState.bracket.activeRoundIndex) {
+                col.classList.add('bracket-column-active');
+            }
 
             var label = document.createElement('div');
             label.className = 'bracket-column-label';
@@ -1144,6 +1804,7 @@
                     matchIndex: m
                 }, matchCount));
             }
+            addBracketJoinsToColumn(col, sideName, r, matchCount, r === half.rounds.length - 1);
             columnsEl.appendChild(col);
         }
 
@@ -1153,33 +1814,62 @@
 
     function renderBracketCenter() {
         var center = document.createElement('div');
-        center.className = 'bracket-center';
-
-        var label = document.createElement('div');
-        label.className = 'bracket-center-label';
-        label.textContent = 'Финал';
-        center.appendChild(label);
+        center.className = 'bracket-center connector-left connector-right';
+        var finalLoc = { side: 'final', roundIndex: 0, matchIndex: 0 };
+        var bronzeLoc = { side: 'bronze', roundIndex: 0, matchIndex: 0 };
 
         var championWrap = document.createElement('div');
-        championWrap.className = 'bracket-champion-slot';
+        championWrap.className = 'bracket-champion-slot bracket-center-finals';
         var championSlot = document.createElement('div');
-        var champInfo = { text: 'Победитель', className: 'tbd champion' };
-        if (gameState.bracket.final.status === 'done' && gameState.bracket.final.winner) {
-            champInfo = formatBracketFighter(gameState.bracket.final.winner);
-            champInfo.className += ' champion';
+        var champInfo = { text: '\u00a0', className: 'tbd champion' };
+        var champFighter = gameState.bracket.final.winner;
+        if (gameState.bracket.final.status === 'done' && champFighter) {
+            champInfo = formatBracketFighter(champFighter);
+            champInfo.className = 'champion';
         }
         championSlot.className = 'bracket-slot ' + champInfo.className;
         championSlot.textContent = champInfo.text;
         championWrap.appendChild(championSlot);
         center.appendChild(championWrap);
 
+        var bronzeLabel = document.createElement('div');
+        bronzeLabel.className = 'bracket-center-label bracket-center-label--spaced';
+        bronzeLabel.textContent = 'За 3-е место';
+        center.appendChild(bronzeLabel);
+
+        var bronzeWrap = document.createElement('div');
+        bronzeWrap.className = 'bracket-bronze-match bracket-center-finals';
+        if (isBronzeRoundActive()) {
+            bronzeWrap.classList.add('bracket-column-active');
+        }
+        bronzeWrap.appendChild(createBracketMatchEl(gameState.bracket.thirdPlace, bronzeLoc, 1));
+        center.appendChild(bronzeWrap);
+
+        var thirdSlotWrap = document.createElement('div');
+        thirdSlotWrap.className = 'bracket-third-slot bracket-center-finals';
+        var thirdSlot = document.createElement('div');
+        var thirdInfo = { text: '\u00a0', className: 'tbd third-place' };
+        var thirdFighter = gameState.bracket.thirdPlace.winner;
+        if (gameState.bracket.thirdPlace.status === 'done' && thirdFighter) {
+            thirdInfo = formatBracketFighter(thirdFighter);
+            thirdInfo.className = 'third-place';
+        }
+        thirdSlot.className = 'bracket-slot ' + thirdInfo.className;
+        thirdSlot.textContent = thirdInfo.text;
+        thirdSlotWrap.appendChild(thirdSlot);
+        center.appendChild(thirdSlotWrap);
+
+        var finalLabel = document.createElement('div');
+        finalLabel.className = 'bracket-center-label bracket-center-label--spaced';
+        finalLabel.textContent = 'Финал';
+        center.appendChild(finalLabel);
+
         var finalWrap = document.createElement('div');
-        finalWrap.className = 'bracket-final-match';
-        finalWrap.appendChild(createBracketMatchEl(gameState.bracket.final, {
-            side: 'final',
-            roundIndex: 0,
-            matchIndex: 0
-        }, 1));
+        finalWrap.className = 'bracket-final-match bracket-center-finals';
+        if (isFinalRoundActive()) {
+            finalWrap.classList.add('bracket-column-active');
+        }
+        finalWrap.appendChild(createBracketMatchEl(gameState.bracket.final, finalLoc, 1));
         center.appendChild(finalWrap);
 
         return center;
@@ -1190,6 +1880,8 @@
         container.innerHTML = '';
 
         if (!gameState.bracket) return;
+
+        syncBracketRoundProgression();
 
         var tree = document.createElement('div');
         tree.className = 'bracket-tree';
@@ -1206,18 +1898,22 @@
 
     function startBracketMatch(loc) {
         var match = getBracketMatch(loc);
-        if (!match || match.status === 'done' || !canFightBracketMatch(match)) return;
+        if (!match || match.status === 'done' || !canFightBracketMatch(match, loc)) return;
+
+        var f1 = getBracketDisplayFighter(match.fighter1, loc, match) || match.fighter1;
+        var f2 = getBracketDisplayFighter(match.fighter2, loc, match) || match.fighter2;
 
         gameState.tournamentStage = 'bracket-fights';
         gameState.activeBracketMatch = loc;
         document.getElementById('bracketOverlay').style.display = 'none';
 
         resetFightState();
-        gameState.redFighterName = match.fighter1.name;
-        gameState.blueFighterName = match.fighter2.name;
+        gameState.redFighterName = f1.name;
+        gameState.blueFighterName = f2.name;
         gameState.sessionStarted = true;
         document.getElementById('secretaryTerminal').classList.remove('hidden');
         updateTournamentBar();
+        updatePlayoffTerminalButtons();
         if (typeof updateDisplay === 'function') updateDisplay();
     }
 
@@ -1231,6 +1927,11 @@
         var winner = null;
         if (winnerSide === 'red') winner = match.fighter1;
         else if (winnerSide === 'blue') winner = match.fighter2;
+
+        if (!winner) {
+            alert('Определите победителя (счёт не может быть равным).');
+            return false;
+        }
 
         match.status = 'done';
         match.winner = winner;
@@ -1249,7 +1950,29 @@
             result: match.result
         });
 
+        if (loc.side === 'bronze' || loc.side === 'final') {
+            advanceBracketWinner(loc, winner);
+            var playoffProgress = tryAdvancePlayoffPhase(false);
+            gameState.activeBracketMatch = null;
+            gameState.tournamentStage = 'bracket';
+            updateTournamentBar();
+            renderBracket();
+            openBracketOverlay();
+
+            if (isBracketComplete()) {
+                var msg = 'Турнир завершён! Победитель: ' + gameState.bracket.final.winner.name;
+                if (gameState.bracket.thirdPlace.winner) {
+                    msg += '. 3-е место: ' + gameState.bracket.thirdPlace.winner.name;
+                }
+                alert(msg);
+            } else if (playoffProgress.advanced) {
+                alert('Этап «' + playoffProgress.fromLabel + '» завершён. Открыт этап «' + playoffProgress.toLabel + '».');
+            }
+            return true;
+        }
+
         advanceBracketWinner(loc, winner);
+        var progression = tryAdvanceBracketRound();
         gameState.activeBracketMatch = null;
         gameState.tournamentStage = 'bracket';
         updateTournamentBar();
@@ -1257,20 +1980,34 @@
         openBracketOverlay();
 
         if (isBracketComplete()) {
-            alert('Турнир завершён! Победитель: ' + gameState.bracket.final.winner.name);
+            var doneMsg = 'Турнир завершён! Победитель: ' + gameState.bracket.final.winner.name;
+            if (gameState.bracket.thirdPlace.winner) {
+                doneMsg += '. 3-е место: ' + gameState.bracket.thirdPlace.winner.name;
+            }
+            alert(doneMsg);
+        } else if (progression.advanced) {
+            alert('Этап «' + progression.fromLabel + '» завершён. Открыт этап «' + progression.toLabel + '».');
         }
         return true;
     }
 
     function advanceBracketWinner(loc, winner) {
         if (!winner || !gameState.bracket) return;
+        if (loc.side === 'bronze' || loc.side === 'final') return;
         advanceBracketWinnerSilent(loc, winner);
-        resolveBracketByes();
+        resolveBracketByesInRound(loc.roundIndex);
+        if (loc.roundIndex + 1 <= getLastSideRoundIndex()) {
+            resolveBracketByesInRound(loc.roundIndex + 1);
+        }
+        if (loc.roundIndex === getLastSideRoundIndex()) {
+            syncBronzeFightersFromSemis();
+        }
     }
 
     function isBracketComplete() {
         if (!gameState.bracket || !gameState.bracket.final) return false;
-        return gameState.bracket.final.status === 'done';
+        ensureBracketPlayoffFields();
+        return gameState.bracket.playoffPhase === 'complete';
     }
 
     function hideBracketOverlay() {
@@ -1324,12 +2061,15 @@
         gameState.activeBracketMatch = null;
         gameState.tournamentFightHistory = [];
         gameState.playoffStarted = false;
+        gameState.qualifyingAdvancersCount = null;
+        syncQualifyingAdvancersInputs(null);
         var poolsOverlay = document.getElementById('poolsOverlay');
         if (poolsOverlay) poolsOverlay.style.display = 'none';
         hidePoolSelectModal();
         hideBracketOverlay();
         updateFormBracketButtons();
         updateOpenBracketButton();
+        updatePlayoffTerminalButtons();
     }
 
     function onSaveFightHook() {
@@ -1353,6 +2093,10 @@
         triggerImportParticipantsXlsx: triggerImportParticipantsXlsx,
         handleParticipantsXlsxSelected: handleParticipantsXlsxSelected,
         previewBracketDemo: previewBracketDemo,
+        randomizePoolsDistribution: randomizePoolsDistribution,
+        randomizePoolFightResults: randomizePoolFightResults,
+        randomizeAllPoolFightResults: randomizeAllPoolFightResults,
+        randomizeCurrentPoolFightResults: randomizeCurrentPoolFightResults,
         goToPoolsComposition: goToPoolsComposition,
         backFromPoolsToParticipants: backFromPoolsToParticipants,
         addPool: addPool,
@@ -1372,6 +2116,10 @@
     global.triggerImportParticipantsXlsx = triggerImportParticipantsXlsx;
     global.handleParticipantsXlsxSelected = handleParticipantsXlsxSelected;
     global.previewBracketDemo = previewBracketDemo;
+    global.randomizePoolsDistribution = randomizePoolsDistribution;
+    global.randomizePoolFightResults = randomizePoolFightResults;
+    global.randomizeAllPoolFightResults = randomizeAllPoolFightResults;
+    global.randomizeCurrentPoolFightResults = randomizeCurrentPoolFightResults;
     global.goToPoolsComposition = goToPoolsComposition;
     global.backFromPoolsToParticipants = backFromPoolsToParticipants;
     global.addPool = addPool;
