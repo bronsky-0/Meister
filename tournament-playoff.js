@@ -188,6 +188,9 @@
             syncQualifyingAdvancersInputs(defaultCount);
         }
         renderPoolsComposition();
+        if (typeof global.persistActiveTournamentNominationIfAny === 'function') {
+            global.persistActiveTournamentNominationIfAny();
+        }
     }
 
     function backFromPoolsToParticipants() {
@@ -719,6 +722,9 @@
     }
 
     function syncTournamentToServer() {
+        if (typeof global.persistActiveTournamentNominationIfAny === 'function') {
+            global.persistActiveTournamentNominationIfAny();
+        }
         if (!isNetworkHost()) return Promise.resolve();
         return NetworkSync.pushTournament(NetworkSync.getTournamentSnapshot(gameState)).catch(function(err) {
             alert('Ошибка синхронизации: ' + (err.message || err));
@@ -726,6 +732,9 @@
     }
 
     function syncTournamentAfterFight() {
+        if (typeof global.persistActiveTournamentNominationIfAny === 'function') {
+            global.persistActiveTournamentNominationIfAny();
+        }
         if (!isNetworkMode()) return Promise.resolve();
         return NetworkSync.completeMatch(NetworkSync.getTournamentSnapshot(gameState)).then(function(data) {
             if (data && data.state) {
@@ -1542,6 +1551,10 @@
         gameState.sessionStarted = true;
         gameState.tournamentMode = true;
         gameState.tournamentStage = 'pool-fights';
+
+        if (typeof global.persistActiveTournamentNominationIfAny === 'function') {
+            global.persistActiveTournamentNominationIfAny();
+        }
 
         document.getElementById('poolsOverlay').style.display = 'none';
         showSecretaryTerminal();

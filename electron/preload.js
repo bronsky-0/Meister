@@ -21,5 +21,8 @@ contextBridge.exposeInMainWorld('MeisterDesktop', {
     },
     openLogFile: function() {
         return ipcRenderer.invoke('desktop:openLogFile');
+    },
+    quit: function() {
+        return ipcRenderer.invoke('desktop:quit');
     }
 });

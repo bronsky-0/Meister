@@ -122,6 +122,11 @@ app.whenReady().then(function() {
         return { entries: [], logFilePath: logFilePath, fileTail: fileTail };
     });
 
+    ipcMain.handle('desktop:quit', function() {
+        app.quit();
+        return { ok: true };
+    });
+
     ipcMain.handle('desktop:openLogFile', function() {
         if (logFilePath && fs.existsSync(logFilePath)) {
             shell.showItemInFolder(logFilePath);
