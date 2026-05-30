@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Экран со счетом - Турнирное табло</title>
+    <title>Meister — табло</title>
+    <link rel="stylesheet" href="meister-theme.css">
     <style>
         * {
             margin: 0;
@@ -12,9 +13,9 @@
         }
 
         body {
-            font-family: "Segoe UI", Arial, sans-serif;
-            background: #000;
-            color: #fff;
+            font-family: var(--meister-font, "Segoe UI", system-ui, sans-serif);
+            background: var(--meister-bg, #070709);
+            color: var(--meister-text, #fff);
             overflow: hidden;
             height: 100vh;
         }
@@ -223,7 +224,7 @@
         }
     </style>
 </head>
-<body>
+<body class="meister-app display-screen">
     <div class="display-screen">
         <div class="fighter-side left-side side-blue">
             <div class="fighter-name" id="leftFighterName">Синий боец</div>
@@ -255,7 +256,7 @@
     </div>
 
     <div class="status-info" id="statusInfo">
-        F — полноэкранный режим
+        Meister · F — полноэкранный режим
     </div>
 
     <script>

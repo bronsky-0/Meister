@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('GladiagonDesktop', {
+contextBridge.exposeInMainWorld('MeisterDesktop', {
     getInfo: function() {
         return ipcRenderer.invoke('desktop:getInfo');
     },
@@ -15,5 +15,11 @@ contextBridge.exposeInMainWorld('GladiagonDesktop', {
     },
     openExternal: function(url) {
         return ipcRenderer.invoke('desktop:openExternal', url);
+    },
+    getLogs: function() {
+        return ipcRenderer.invoke('desktop:getLogs');
+    },
+    openLogFile: function() {
+        return ipcRenderer.invoke('desktop:openLogFile');
     }
 });
