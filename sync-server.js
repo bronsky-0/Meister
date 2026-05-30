@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Локальный синх-сервер Gladiagon для турниров по Wi-Fi.
+ * Локальный синх-сервер Meister для турниров по Wi-Fi.
  * CLI: node sync-server.js
  * Модуль: const { startSyncServer } = require('./sync-server');
  */
@@ -48,7 +48,7 @@ function buildServerUrls(port, ips) {
 
 function createSyncServer(options) {
     options = options || {};
-    const port = parseInt(options.port || process.env.GLADIAGON_PORT || DEFAULT_PORT, 10);
+    const port = parseInt(options.port || process.env.MEISTER_PORT || process.env.GLADIAGON_PORT || DEFAULT_PORT, 10);
     const root = options.root || __dirname;
     const silent = !!options.silent;
     const onLog = typeof options.onLog === 'function' ? options.onLog : null;
@@ -485,7 +485,7 @@ function createSyncServer(options) {
 
         const ips = getLocalIps();
         const primaryIp = ips[0] || '127.0.0.1';
-        const message = Buffer.from('GLADIAGON|' + port + '|' + primaryIp + '|' + os.hostname());
+        const message = Buffer.from('MEISTER|' + port + '|' + primaryIp + '|' + os.hostname());
 
         discoveryTimer = setInterval(function() {
             try {
@@ -579,7 +579,7 @@ function createSyncServer(options) {
                 });
                 if (!silent) {
                     console.log('');
-                    console.log('  Gladiagon sync-server');
+                    console.log('  Meister sync-server');
                     console.log('  HTTP port:', port);
                     console.log('  UDP discovery port:', DISCOVERY_PORT);
                     console.log('');

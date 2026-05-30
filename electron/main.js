@@ -32,7 +32,7 @@ function createWindow() {
         height: 800,
         minWidth: 900,
         minHeight: 600,
-        title: 'Gladiagon',
+        title: 'Meister',
         backgroundColor: '#000000',
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
@@ -74,8 +74,8 @@ async function stopEmbeddedServer() {
 }
 
 app.whenReady().then(function() {
-    logFilePath = path.join(app.getPath('userData'), 'gladiagon-server.log');
-    appendLogLine('=== Gladiagon ' + app.getVersion() + ' started ===');
+    logFilePath = path.join(app.getPath('userData'), 'meister-server.log');
+    appendLogLine('=== Meister ' + app.getVersion() + ' started ===');
 
     ipcMain.handle('desktop:getInfo', function() {
         return {

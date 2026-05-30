@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('GladiagonDesktop', {
+contextBridge.exposeInMainWorld('MeisterDesktop', {
     getInfo: function() {
         return ipcRenderer.invoke('desktop:getInfo');
     },

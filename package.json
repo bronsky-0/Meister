@@ -1,10 +1,10 @@
 {
-  "name": "gladiagon",
-  "productName": "Gladiagon",
+  "name": "meister",
+  "productName": "Meister",
   "version": "1.0.0",
-  "description": "Терминал секретаря и турнирное табло для HEMA",
+  "description": "Meister — терминал секретаря и турнирное табло для HEMA",
   "main": "electron/main.js",
-  "author": "Gladiagon",
+  "author": "Meister",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
@@ -20,9 +20,9 @@
     "electron-builder": "^25.1.8"
   },
   "build": {
-    "appId": "com.gladiagon.app",
-    "productName": "Gladiagon",
-    "artifactName": "Gladiagon-Setup-${os}.${ext}",
+    "appId": "com.meister.app",
+    "productName": "Meister",
+    "artifactName": "Meister-Setup-${os}.${ext}",
     "directories": {
       "output": "dist"
     },
@@ -32,6 +32,7 @@
       "network-sync.js",
       "tournament-playoff.js",
       "display_screen.html",
+      "meister-theme.css",
       "secretary_terminal_updated .html",
       "package.json"
     ],
@@ -55,13 +56,13 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "artifactName": "Gladiagon-Setup-win.${ext}"
+      "artifactName": "Meister-Setup-win.${ext}"
     },
     "dmg": {
-      "artifactName": "Gladiagon-Setup-mac.${ext}"
+      "artifactName": "Meister-Setup-mac.${ext}"
     },
     "appImage": {
-      "artifactName": "Gladiagon-Setup-linux.${ext}"
+      "artifactName": "Meister-Setup-linux.${ext}"
     }
   }
 }

@@ -23,16 +23,46 @@
     var onStateCallbacks = [];
     var onConnectionCallbacks = [];
 
+    var STORAGE_KEYS = {
+        deviceId: 'meisterDeviceId',
+        deviceName: 'meisterDeviceName',
+        serverUrl: 'meisterServerUrl'
+    };
+
+    var LEGACY_KEYS = {
+        meisterDeviceId: 'gladiagonDeviceId',
+        meisterDeviceName: 'gladiagonDeviceName',
+        meisterServerUrl: 'gladiagonServerUrl'
+    };
+
+    function getStorageItem(key) {
+        var val = localStorage.getItem(STORAGE_KEYS[key]);
+        if (val !== null && val !== '') return val;
+        var legacyKey = LEGACY_KEYS[STORAGE_KEYS[key]];
+        if (legacyKey) {
+            val = localStorage.getItem(legacyKey);
+            if (val !== null && val !== '') {
+                localStorage.setItem(STORAGE_KEYS[key], val);
+                return val;
+            }
+        }
+        return null;
+    }
+
+    function setStorageItem(key, value) {
+        localStorage.setItem(STORAGE_KEYS[key], value);
+    }
+
     function generateDeviceId() {
-        var stored = localStorage.getItem('gladiagonDeviceId');
+        var stored = getStorageItem('deviceId');
         if (stored) return stored;
         stored = 'dev_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
-        localStorage.setItem('gladiagonDeviceId', stored);
+        setStorageItem('deviceId', stored);
         return stored;
     }
 
     function getDefaultDeviceName() {
-        var stored = localStorage.getItem('gladiagonDeviceName');
+        var stored = getStorageItem('deviceName');
         if (stored) return stored;
         var ua = navigator.userAgent || '';
         if (/iPad|Tablet/i.test(ua)) return 'Планшет';
@@ -42,7 +72,7 @@
 
     function setDeviceName(name) {
         networkState.deviceName = (name || '').trim() || getDefaultDeviceName();
-        localStorage.setItem('gladiagonDeviceName', networkState.deviceName);
+        setStorageItem('deviceName', networkState.deviceName);
     }
 
     function normalizeServerUrl(input) {
@@ -285,7 +315,7 @@
             var info = result.info;
             networkState.enabled = true;
             networkState.connected = true;
-            localStorage.setItem('gladiagonServerUrl', url);
+            localStorage.setItem('meisterServerUrl', url);
             connectSSE();
             notifyConnection();
             return fetchJson('/api/state').then(function(state) {
@@ -298,7 +328,7 @@
     }
 
     function autoConnectIfSaved() {
-        var saved = localStorage.getItem('gladiagonServerUrl');
+        var saved = getStorageItem('serverUrl');
         if (saved) {
             return connect(saved).catch(function() { return null; });
         }
