@@ -12,7 +12,7 @@
         }
 
         body {
-            font-family: Arial, sans-serif;
+            font-family: "Segoe UI", Arial, sans-serif;
             background: #000;
             color: #fff;
             overflow: hidden;
@@ -24,177 +24,238 @@
             height: 100vh;
             width: 100vw;
             position: relative;
+            isolation: isolate;
         }
 
-        .left-side {
+        .fighter-side {
             flex: 1;
-            background: rgb(0, 0, 200);
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             position: relative;
+            padding: 4vh 2vw;
+            min-width: 0;
         }
 
+        .left-side,
         .right-side {
-            flex: 1;
-            background: rgb(200, 0, 0);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            position: relative;
+            transition: background 0.35s ease;
         }
 
-        .center-panel {
-            background: rgb(180, 180, 180);
-            width: 200px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            color: #000;
-            position: relative;
+        .fighter-side.side-blue {
+            background:
+                radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.12), transparent 45%),
+                linear-gradient(160deg, rgb(0, 20, 170) 0%, rgb(0, 0, 130) 55%, rgb(0, 0, 95) 100%);
         }
 
-        .round-counter {
+        .fighter-side.side-red {
+            background:
+                radial-gradient(circle at 70% 20%, rgba(255, 255, 255, 0.12), transparent 45%),
+                linear-gradient(200deg, rgb(190, 0, 0) 0%, rgb(150, 0, 0) 55%, rgb(110, 0, 0) 100%);
+        }
+
+        .fighter-side::after {
+            content: "";
             position: absolute;
-            top: 2vh;
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 10vh;
-            font-weight: bold;
-            color: #fff;
-            z-index: 10;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            inset: 0;
+            pointer-events: none;
+            box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.28);
         }
 
         .fighter-name {
-            font-size: 6vh;
-            margin-bottom: 4vh;
+            font-size: clamp(28px, 5.5vh, 72px);
+            margin-bottom: 2vh;
             text-align: center;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            text-shadow: 0 3px 14px rgba(0, 0, 0, 0.45);
+            max-width: 92%;
+            line-height: 1.15;
+            word-break: break-word;
         }
 
         .main-score {
-            font-size: 30vh;
-            font-weight: bold;
+            font-size: clamp(96px, 28vh, 320px);
+            font-weight: 800;
+            line-height: 0.95;
             margin-bottom: 1vh;
-            text-shadow: 3px 3px 6px rgba(0,0,0,0.5);
-        }
-
-        .score-label {
-            font-size: 6vh;
-            margin-bottom: 2vh;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-        }
-
-        .rounds-score {
-            font-size: 15vh;
-            font-weight: bold;
-            margin-bottom: 0.5vh;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-        }
-
-        .rounds-label {
-            font-size: 3vh;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            text-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+            font-variant-numeric: tabular-nums;
         }
 
         .bonus-score {
-            font-size: 5vh;
-            font-weight: bold;
+            font-size: clamp(20px, 4.5vh, 56px);
+            font-weight: 700;
+            margin-bottom: 1.5vh;
+            color: rgb(255, 220, 80);
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+        }
+
+        .score-label {
+            font-size: clamp(18px, 3.2vh, 42px);
             margin-bottom: 1vh;
-            color: rgb(255, 220, 0);
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            opacity: 0.82;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .rounds-score {
+            font-size: clamp(40px, 12vh, 140px);
+            font-weight: 800;
+            line-height: 1;
+            margin-bottom: 0.4vh;
+            font-variant-numeric: tabular-nums;
+            text-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+        }
+
+        .rounds-label {
+            font-size: clamp(16px, 2.4vh, 32px);
+            opacity: 0.82;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        .center-overlay {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 30;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1.2vh;
+            pointer-events: none;
+        }
+
+        .center-card {
+            min-width: clamp(180px, 16vw, 280px);
+            padding: 2.2vh 2.4vw;
+            border-radius: 18px;
+            background: rgba(8, 8, 8, 0.88);
+            border: 2px solid rgba(255, 255, 255, 0.14);
+            box-shadow:
+                0 18px 50px rgba(0, 0, 0, 0.55),
+                inset 0 1px 0 rgba(255, 255, 255, 0.08);
+            text-align: center;
+            backdrop-filter: blur(8px);
+        }
+
+        .round-info {
+            font-size: clamp(18px, 3vh, 36px);
+            font-weight: 700;
+            color: rgba(255, 255, 255, 0.92);
+            letter-spacing: 0.04em;
+            margin-bottom: 0.8vh;
         }
 
         .timer {
-            font-size: 8vh;
-            font-weight: bold;
-            margin-bottom: 1vh;
-            color: #000;
+            font-size: clamp(42px, 9vh, 110px);
+            font-weight: 800;
+            line-height: 1;
+            color: #fff;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 0.04em;
+            text-shadow: 0 0 24px rgba(255, 255, 255, 0.08);
         }
 
         .timer.active {
-            color: rgb(0, 150, 0);
+            color: rgb(110, 255, 130);
+            text-shadow: 0 0 28px rgba(80, 255, 120, 0.35);
         }
 
         .timer-label {
-            font-size: 6vh;
-            color: #000;
+            margin-top: 0.8vh;
+            font-size: clamp(14px, 2.2vh, 28px);
+            color: rgba(255, 255, 255, 0.62);
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+
+        .center-divider {
+            width: 4px;
+            height: 100%;
+            position: absolute;
+            left: 50%;
+            top: 0;
+            transform: translateX(-50%);
+            background: linear-gradient(
+                180deg,
+                rgba(255, 255, 255, 0) 0%,
+                rgba(255, 255, 255, 0.22) 18%,
+                rgba(255, 255, 255, 0.22) 82%,
+                rgba(255, 255, 255, 0) 100%
+            );
+            z-index: 10;
+            pointer-events: none;
         }
 
         .status-info {
             position: absolute;
-            bottom: 20px;
+            bottom: 16px;
             left: 50%;
             transform: translateX(-50%);
-            color: #fff;
-            font-size: 2vh;
+            color: rgba(255, 255, 255, 0.55);
+            font-size: clamp(11px, 1.6vh, 16px);
             text-align: center;
-            background: rgba(0,0,0,0.7);
-            padding: 10px 20px;
-            border-radius: 10px;
+            background: rgba(0, 0, 0, 0.45);
+            padding: 8px 16px;
+            border-radius: 999px;
+            z-index: 20;
+            opacity: 0.7;
+            transition: opacity 0.3s;
+        }
+
+        body.fullscreen-active .status-info {
+            opacity: 0;
         }
 
         @media (max-width: 768px) {
-            .center-panel {
-                width: 150px;
+            .fighter-side {
+                padding: 3vh 1.5vw;
             }
 
-            .main-score {
-                font-size: 20vh;
-            }
-
-            .rounds-score {
-                font-size: 10vh;
-            }
-
-            .fighter-name {
-                font-size: 4vh;
-            }
-
-            .timer {
-                font-size: 6vh;
-            }
-
-            .round-counter {
-                font-size: 6vh;
+            .center-card {
+                min-width: 150px;
+                padding: 1.6vh 2vw;
             }
         }
     </style>
 </head>
 <body>
     <div class="display-screen">
-        <div class="left-side">
+        <div class="fighter-side left-side side-blue">
             <div class="fighter-name" id="leftFighterName">Синий боец</div>
             <div class="main-score" id="leftScore">0</div>
             <div class="bonus-score" id="leftBonus" style="display: none;">Бонус: 0</div>
-            <div class="score-label">Счет</div>
+            <div class="score-label">Счёт</div>
             <div class="rounds-score" id="leftRounds">0</div>
             <div class="rounds-label">Раунды</div>
         </div>
 
-        <div class="center-panel">
-            <div class="timer" id="timer">02:00</div>
-            <div class="timer-label">Время</div>
-        </div>
+        <div class="center-divider"></div>
 
-        <div class="right-side">
+        <div class="fighter-side right-side side-red">
             <div class="fighter-name" id="rightFighterName">Красный боец</div>
             <div class="main-score" id="rightScore">0</div>
             <div class="bonus-score" id="rightBonus" style="display: none;">Бонус: 0</div>
-            <div class="score-label">Счет</div>
+            <div class="score-label">Счёт</div>
             <div class="rounds-score" id="rightRounds">0</div>
             <div class="rounds-label">Раунды</div>
         </div>
+
+        <div class="center-overlay">
+            <div class="center-card">
+                <div class="round-info" id="roundInfo">Раунд 1</div>
+                <div class="timer" id="timer">02:00</div>
+                <div class="timer-label">Время</div>
+            </div>
+        </div>
     </div>
 
-    <div class="round-counter" id="roundInfo">Раунд 1</div>
-
     <div class="status-info" id="statusInfo">
-        F - полноэкранный режим | Обновляется автоматически
+        F — полноэкранный режим
     </div>
 
     <script>
@@ -211,27 +272,48 @@
             timerRemaining: 120,
             timerActive: false,
             wallersteinMode: true,
-            hasBonusPoints: false
+            hasBonusPoints: false,
+            sidesSwitched: false
         };
+
+        function getFighter(field, color) {
+            if (color === 'red') return gameData['red' + field];
+            return gameData['blue' + field];
+        }
+
+        function getMirroredSides() {
+            // Зеркало относительно терминала секретаря:
+            // секретарь: красный слева, синий справа → табло: синий слева, красный справа
+            if (!gameData.sidesSwitched) {
+                return { left: 'blue', right: 'red' };
+            }
+            return { left: 'red', right: 'blue' };
+        }
 
         function updateDisplay(data) {
             if (data) {
-                gameData = data;
+                gameData = Object.assign({}, gameData, data);
             }
 
-            // На экране счета красный всегда справа, синий слева
-            document.getElementById('leftFighterName').textContent = gameData.blueFighterName;
-            document.getElementById('rightFighterName').textContent = gameData.redFighterName;
-            document.getElementById('leftScore').textContent = gameData.blueScore;
-            document.getElementById('rightScore').textContent = gameData.redScore;
-            document.getElementById('leftRounds').textContent = gameData.blueRounds;
-            document.getElementById('rightRounds').textContent = gameData.redRounds;
+            var sides = getMirroredSides();
+            var leftColor = sides.left === 'red' ? 'red' : 'blue';
+            var rightColor = sides.right === 'red' ? 'red' : 'blue';
+
+            document.getElementById('leftFighterName').textContent = getFighter('FighterName', sides.left);
+            document.getElementById('rightFighterName').textContent = getFighter('FighterName', sides.right);
+            document.getElementById('leftScore').textContent = getFighter('Score', sides.left);
+            document.getElementById('rightScore').textContent = getFighter('Score', sides.right);
+            document.getElementById('leftRounds').textContent = getFighter('Rounds', sides.left);
+            document.getElementById('rightRounds').textContent = getFighter('Rounds', sides.right);
+
+            document.querySelector('.left-side').className = 'fighter-side left-side side-' + leftColor;
+            document.querySelector('.right-side').className = 'fighter-side right-side side-' + rightColor;
 
             var leftBonusEl = document.getElementById('leftBonus');
             var rightBonusEl = document.getElementById('rightBonus');
             if (gameData.hasBonusPoints) {
-                leftBonusEl.textContent = 'Бонус: ' + (gameData.blueBonus || 0);
-                rightBonusEl.textContent = 'Бонус: ' + (gameData.redBonus || 0);
+                leftBonusEl.textContent = 'Бонус: ' + getFighter('Bonus', sides.left);
+                rightBonusEl.textContent = 'Бонус: ' + getFighter('Bonus', sides.right);
                 leftBonusEl.style.display = 'block';
                 rightBonusEl.style.display = 'block';
             } else {
@@ -239,7 +321,6 @@
                 rightBonusEl.style.display = 'none';
             }
 
-            // Обновляем таймер
             var minutes = Math.floor(gameData.timerRemaining / 60);
             var seconds = gameData.timerRemaining % 60;
             var timeString = minutes.toString().padStart(2, '0') + ':' + seconds.toString().padStart(2, '0');
@@ -247,44 +328,48 @@
             document.getElementById('timer').textContent = timeString;
             document.getElementById('timer').className = gameData.timerActive ? 'timer active' : 'timer';
 
-            // Обновляем раунды
+            var roundInfo = document.getElementById('roundInfo');
+            var roundsElements = document.querySelectorAll('.rounds-score, .rounds-label');
+
             if (gameData.wallersteinMode) {
-                document.getElementById('roundInfo').textContent = 'Раунд ' + gameData.currentRound;
-                document.getElementById('roundInfo').style.display = 'block';
-                var roundsElements = document.querySelectorAll('.rounds-score, .rounds-label');
+                roundInfo.textContent = 'Раунд ' + gameData.currentRound;
+                roundInfo.style.display = 'block';
                 for (var i = 0; i < roundsElements.length; i++) {
                     roundsElements[i].style.display = 'block';
                 }
             } else {
-                document.getElementById('roundInfo').style.display = 'none';
-                var roundsElements = document.querySelectorAll('.rounds-score, .rounds-label');
-                for (var i = 0; i < roundsElements.length; i++) {
-                    roundsElements[i].style.display = 'none';
+                roundInfo.style.display = 'none';
+                for (var j = 0; j < roundsElements.length; j++) {
+                    roundsElements[j].style.display = 'none';
                 }
             }
         }
 
-        // Функция получения данных от родительского окна
+        function mapParentState(parentGameState) {
+            return {
+                redFighterName: parentGameState.redFighterName,
+                blueFighterName: parentGameState.blueFighterName,
+                redScore: parentGameState.redScore,
+                blueScore: parentGameState.blueScore,
+                redBonus: parentGameState.redBonus,
+                blueBonus: parentGameState.blueBonus,
+                redRounds: parentGameState.redRoundsWon,
+                blueRounds: parentGameState.blueRoundsWon,
+                currentRound: parentGameState.currentRound,
+                timerRemaining: parentGameState.timerRemaining,
+                timerActive: parentGameState.timerActive,
+                wallersteinMode: parentGameState.ruleset === 'wallerstein',
+                hasBonusPoints: parentGameState.ruleset === 'sidesword-rgf',
+                sidesSwitched: !!parentGameState.sidesSwitched
+            };
+        }
+
         function receiveData() {
             try {
                 if (window.opener && !window.opener.closed) {
                     var parentGameState = window.opener.gameState;
                     if (parentGameState) {
-                        updateDisplay({
-                            redFighterName: parentGameState.redFighterName,
-                            blueFighterName: parentGameState.blueFighterName,
-                            redScore: parentGameState.redScore,
-                            blueScore: parentGameState.blueScore,
-                            redBonus: parentGameState.redBonus,
-                            blueBonus: parentGameState.blueBonus,
-                            redRounds: parentGameState.redRoundsWon,
-                            blueRounds: parentGameState.blueRoundsWon,
-                            currentRound: parentGameState.currentRound,
-                            timerRemaining: parentGameState.timerRemaining,
-                            timerActive: parentGameState.timerActive,
-                            wallersteinMode: parentGameState.ruleset === 'wallerstein',
-                            hasBonusPoints: parentGameState.ruleset === 'sidesword-rgf'
-                        });
+                        updateDisplay(mapParentState(parentGameState));
                     }
                 }
             } catch (e) {
@@ -292,14 +377,12 @@
             }
         }
 
-        // Обработка сообщений от родительского окна
         window.addEventListener('message', function(event) {
             if (event.data && event.data.type === 'gameStateUpdate') {
                 updateDisplay(event.data.gameState);
             }
         });
 
-        // Клавиша F для полноэкранного режима
         document.addEventListener('keydown', function(event) {
             if (event.key === 'f' || event.key === 'F') {
                 if (document.fullscreenElement) {
@@ -310,10 +393,11 @@
             }
         });
 
-        // Периодическое обновление данных
-        setInterval(receiveData, 100);
+        document.addEventListener('fullscreenchange', function() {
+            document.body.classList.toggle('fullscreen-active', !!document.fullscreenElement);
+        });
 
-        // Инициализация
+        setInterval(receiveData, 100);
         updateDisplay();
         receiveData();
     </script>
