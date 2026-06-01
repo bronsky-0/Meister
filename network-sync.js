@@ -463,7 +463,8 @@
             playoffStarted: gs.playoffStarted,
             qualifyingAdvancersCount: gs.qualifyingAdvancersCount,
             tournamentFightHistory: gs.tournamentFightHistory,
-            hostSelectedArenaId: gs.hostSelectedArenaId || null
+            hostSelectedArenaId: gs.hostSelectedArenaId || null,
+            poolArenaAssignments: gs.poolArenaAssignments || {}
         }));
     }
 

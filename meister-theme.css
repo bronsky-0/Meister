@@ -428,3 +428,69 @@ body.meister-app {
 .app-settings-license input {
     accent-color: var(--meister-accent);
 }
+
+.pool-select-detail-view {
+    text-align: left;
+    margin-top: 12px;
+}
+
+.pool-arena-assign-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 12px 0 16px;
+    font-size: 14px;
+    color: var(--meister-text-muted);
+}
+
+.pool-arena-assign-row select {
+    flex: 1;
+    max-width: 220px;
+    padding: 10px;
+}
+
+.pool-fight-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 360px;
+    overflow-y: auto;
+}
+
+.pool-fight-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    background: var(--meister-bg-elevated);
+    border: 1px solid var(--meister-border-subtle);
+    border-radius: var(--meister-radius-sm);
+}
+
+.pool-fight-item.done {
+    opacity: 0.55;
+}
+
+.pool-fight-item.in-progress {
+    border-color: var(--meister-accent);
+}
+
+.pool-fight-item-info {
+    flex: 1;
+    font-size: 15px;
+    color: var(--meister-text);
+}
+
+.pool-fight-item .menu-button {
+    flex-shrink: 0;
+    padding: 10px 16px !important;
+    font-size: 14px !important;
+}
+
+.pool-fight-empty {
+    justify-content: center;
+    color: var(--meister-text-muted);
+    font-size: 14px;
+}
