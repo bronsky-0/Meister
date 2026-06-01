@@ -13,7 +13,8 @@
     "dist": "electron-builder",
     "dist:mac": "electron-builder --mac --universal",
     "dist:win": "electron-builder --win",
-    "dist:linux": "electron-builder --linux"
+    "dist:linux": "electron-builder --linux",
+    "test": "node tests/pool-rankings.test.js"
   },
   "devDependencies": {
     "electron": "^34.0.0",
@@ -34,6 +35,7 @@
       "display_screen.html",
       "meister-theme.css",
       "meister-tournaments.js",
+      "pool-rankings-core.js",
       "secretary_terminal.html",
       "package.json"
     ],
