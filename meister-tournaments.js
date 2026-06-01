@@ -99,7 +99,8 @@
             bracket: gs.bracket ? JSON.parse(JSON.stringify(gs.bracket)) : null,
             playoffStarted: !!gs.playoffStarted,
             qualifyingAdvancersCount: gs.qualifyingAdvancersCount != null ? gs.qualifyingAdvancersCount : null,
-            tournamentFightHistory: gs.tournamentFightHistory ? gs.tournamentFightHistory.slice() : []
+            tournamentFightHistory: gs.tournamentFightHistory ? gs.tournamentFightHistory.slice() : [],
+            poolArenaAssignments: gs.poolArenaAssignments ? JSON.parse(JSON.stringify(gs.poolArenaAssignments)) : {}
         };
     }
 
@@ -119,6 +120,9 @@
         gs.tournamentFightHistory = nomination.tournamentFightHistory
             ? nomination.tournamentFightHistory.slice()
             : [];
+        gs.poolArenaAssignments = nomination.poolArenaAssignments
+            ? JSON.parse(JSON.stringify(nomination.poolArenaAssignments))
+            : {};
         gs.tournamentMode = !!nomination.playoffStarted;
     }
 
@@ -140,6 +144,9 @@
         nomination.playoffStarted = patch.playoffStarted;
         nomination.qualifyingAdvancersCount = patch.qualifyingAdvancersCount;
         nomination.tournamentFightHistory = patch.tournamentFightHistory;
+        nomination.poolArenaAssignments = patch.poolArenaAssignments
+            ? JSON.parse(JSON.stringify(patch.poolArenaAssignments))
+            : {};
 
         updateTournament(found.tournament);
         return true;

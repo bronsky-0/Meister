@@ -11,7 +11,7 @@
     "server": "node sync-server.js",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
-    "dist:mac": "electron-builder --mac",
+    "dist:mac": "electron-builder --mac --universal",
     "dist:win": "electron-builder --win",
     "dist:linux": "electron-builder --linux"
   },
@@ -34,14 +34,21 @@
       "display_screen.html",
       "meister-theme.css",
       "meister-tournaments.js",
-      "secretary_terminal_updated .html",
+      "secretary_terminal.html",
       "package.json"
     ],
     "mac": {
       "category": "public.app-category.sports",
       "target": [
         "dmg"
-      ]
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSHighResolutionCapable": true
+      }
     },
     "win": {
       "target": [
@@ -60,7 +67,16 @@
       "artifactName": "Meister-Setup-win.${ext}"
     },
     "dmg": {
-      "artifactName": "Meister-Setup-mac.${ext}"
+      "artifactName": "Meister-Setup-mac.${ext}",
+      "title": "Meister ${version}",
+      "window": {
+        "width": 540,
+        "height": 380
+      },
+      "contents": [
+        { "x": 130, "y": 200, "type": "file" },
+        { "x": 410, "y": 200, "type": "link", "path": "/Applications" }
+      ]
     },
     "appImage": {
       "artifactName": "Meister-Setup-linux.${ext}"

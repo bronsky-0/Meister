@@ -199,7 +199,7 @@ function createSyncServer(options) {
     }
 
     function serveStatic(req, res, urlPath) {
-        let filePath = urlPath === '/' ? '/secretary_terminal_updated .html' : urlPath;
+        let filePath = urlPath === '/' ? '/secretary_terminal.html' : urlPath;
         filePath = decodeURIComponent(filePath.split('?')[0]);
         const abs = path.normalize(path.join(root, filePath));
         if (!abs.startsWith(root)) {
