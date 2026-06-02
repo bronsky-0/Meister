@@ -198,6 +198,25 @@ function createSyncServer(options) {
         }
     }
 
+    function getPoolAssignedArena(tournament, poolId) {
+        if (!tournament || !tournament.poolArenaAssignments) return null;
+        const val = tournament.poolArenaAssignments[poolId];
+        return val ? parseInt(val, 10) : null;
+    }
+
+    function isPoolMatchAllowedForArena(tournament, poolId, arenaId, hostDevice) {
+        if (hostDevice) return true;
+        const assigned = getPoolAssignedArena(tournament, poolId);
+        return assigned !== null && assigned === arenaId;
+    }
+
+    function reopenMatchForEdit(match) {
+        match.status = 'in_progress';
+        delete match.winnerId;
+        delete match.winner;
+        delete match.result;
+    }
+
     function serveStatic(req, res, urlPath) {
         let filePath = urlPath === '/' ? '/secretary_terminal.html' : urlPath;
         filePath = decodeURIComponent(filePath.split('?')[0]);
@@ -353,8 +372,8 @@ function createSyncServer(options) {
 
         if (url.pathname === '/api/match/claim') {
             const device = getDevice(body);
-            if (!device || (device.role !== 'arena' && !isHost(body))) {
-                sendJson(res, 403, { error: 'Arena or host device only' });
+            if (!device || !isHost(body)) {
+                sendJson(res, 403, { error: 'Only the host device can assign fights' });
                 return;
             }
             const arenaId = parseInt(body.arenaId, 10) || device.arenaId;
@@ -390,9 +409,14 @@ function createSyncServer(options) {
                 return;
             }
 
+            const reopen = !!body.reopen;
+
             if (match.status === 'done') {
-                sendJson(res, 409, { error: 'Match already done' });
-                return;
+                if (!reopen) {
+                    sendJson(res, 409, { error: 'Match already done' });
+                    return;
+                }
+                reopenMatchForEdit(match);
             }
 
             const existing = state.matchLocks[matchKey];
@@ -401,7 +425,9 @@ function createSyncServer(options) {
                 return;
             }
 
-            match.status = 'in_progress';
+            if (match.status !== 'in_progress') {
+                match.status = 'in_progress';
+            }
             match.arenaId = arenaId;
             state.matchLocks[matchKey] = {
                 deviceId: body.deviceId,
@@ -410,8 +436,35 @@ function createSyncServer(options) {
                 poolId: body.poolId || null,
                 matchId: body.matchId || null,
                 bracketLoc: body.bracketLoc || null,
+                arenaDeviceId: null,
                 since: Date.now()
             };
+            bumpVersion();
+            sendJson(res, 200, { ok: true, matchKey: matchKey, state: getPublicState() });
+            return;
+        }
+
+        if (url.pathname === '/api/match/join') {
+            const device = getDevice(body);
+            if (!device || device.role !== 'arena') {
+                sendJson(res, 403, { error: 'Arena devices only' });
+                return;
+            }
+            const matchKey = body.matchKey;
+            if (!matchKey) {
+                sendJson(res, 400, { error: 'matchKey required' });
+                return;
+            }
+            const lock = state.matchLocks[matchKey];
+            if (!lock || lock.deviceId !== state.hostDeviceId) {
+                sendJson(res, 403, { error: 'Fight not assigned by host' });
+                return;
+            }
+            if (lock.arenaId !== device.arenaId) {
+                sendJson(res, 403, { error: 'Fight assigned to another arena' });
+                return;
+            }
+            lock.arenaDeviceId = body.deviceId;
             bumpVersion();
             sendJson(res, 200, { ok: true, matchKey: matchKey, state: getPublicState() });
             return;
@@ -429,8 +482,14 @@ function createSyncServer(options) {
             const hostCompleting = isHost(body);
 
             if (lock && lock.deviceId !== body.deviceId && !hostCompleting) {
-                sendJson(res, 403, { error: 'Not match owner' });
-                return;
+                const arenaMayComplete = device.role === 'arena' &&
+                    lock.arenaId === device.arenaId &&
+                    state.hostDeviceId === lock.deviceId &&
+                    (!lock.arenaDeviceId || lock.arenaDeviceId === body.deviceId);
+                if (!arenaMayComplete) {
+                    sendJson(res, 403, { error: 'Not match owner' });
+                    return;
+                }
             }
 
             if (!body.tournament || typeof body.tournament !== 'object') {
