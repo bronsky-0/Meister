@@ -246,6 +246,25 @@ body.meister-app {
     background: var(--meister-bg-card) !important;
     border: 1px solid var(--meister-border);
     border-radius: var(--meister-radius);
+    box-shadow: var(--meister-shadow);
+    max-width: min(960px, 96vw) !important;
+    width: 96vw !important;
+    max-height: min(92vh, 900px) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    padding: 28px 32px !important;
+}
+
+.pool-select-scroll-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.pool-fight-list {
+    max-height: none !important;
+    overflow-y: visible !important;
 }
 
 .bracket-brand {
@@ -493,4 +512,23 @@ body.meister-app {
     justify-content: center;
     color: var(--meister-text-muted);
     font-size: 14px;
+}
+
+.pool-rankings-overlay {
+    background: var(--meister-bg) !important;
+}
+
+.pool-rankings-content {
+    background: var(--meister-bg-card) !important;
+    border: 1px solid var(--meister-border) !important;
+    border-radius: var(--meister-radius) !important;
+}
+
+.pool-rankings-table th {
+    background: var(--meister-bg-card) !important;
+    color: var(--meister-text-muted) !important;
+}
+
+.pool-rankings-table .col-name {
+    color: var(--meister-text) !important;
 }

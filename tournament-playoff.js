@@ -894,8 +894,9 @@
             gameState.tournamentStage === 'bracket-fights';
     }
 
-    function updateFormBracketButtons() {
+        function updateFormBracketButtons() {
         var canForm = allPoolsComplete() && !gameState.bracket && (!isNetworkMode() || isNetworkHost());
+        var canRank = allPoolsComplete() && !gameState.bracket;
         var ids = ['formBracketBtn', 'formBracketBtnPool'];
         for (var i = 0; i < ids.length; i++) {
             var btn = document.getElementById(ids[i]);
@@ -907,6 +908,11 @@
             btn.classList.remove('hidden');
             btn.disabled = !canForm;
             btn.title = canForm ? '' : 'Сначала проведите все бои во всех пулах';
+        }
+        var rankingsBtn = document.getElementById('showPoolRankingsBtn');
+        if (rankingsBtn) {
+            if (canRank) rankingsBtn.classList.remove('hidden');
+            else rankingsBtn.classList.add('hidden');
         }
     }
 
@@ -1021,41 +1027,10 @@
     }
 
     function getGlobalPoolStandings() {
-        var stats = {};
-        for (var i = 0; i < gameState.participants.length; i++) {
-            var participant = gameState.participants[i];
-            stats[participant.id] = {
-                participantId: participant.id,
-                name: participant.name,
-                wins: 0,
-                losses: 0
-            };
+        if (typeof PoolRankings !== 'undefined' && PoolRankings.buildPoolRankingsList) {
+            return PoolRankings.buildPoolRankingsList(gameState.participants, gameState.poolMatches);
         }
-
-        for (var poolId in gameState.poolMatches) {
-            if (!gameState.poolMatches.hasOwnProperty(poolId)) continue;
-            var matches = gameState.poolMatches[poolId];
-            for (var m = 0; m < matches.length; m++) {
-                var match = matches[m];
-                if (match.status !== 'done' || !match.winnerId) continue;
-                if (stats[match.winnerId]) stats[match.winnerId].wins++;
-                var loserId = match.winnerId === match.fighter1Id ?
-                    match.fighter2Id : match.fighter1Id;
-                if (stats[loserId]) stats[loserId].losses++;
-            }
-        }
-
-        var list = [];
-        for (var id in stats) {
-            if (stats.hasOwnProperty(id)) list.push(stats[id]);
-        }
-
-        list.sort(function(a, b) {
-            if (b.wins !== a.wins) return b.wins - a.wins;
-            if (a.losses !== b.losses) return a.losses - b.losses;
-            return a.name.localeCompare(b.name, 'ru');
-        });
-        return list;
+        return [];
     }
 
     function selectAdvancersForBracket(count) {
@@ -1934,10 +1909,11 @@
                 if (typeof updateDisplay === 'function') updateDisplay();
             }
         } else {
-            alert('Все бои выбранного пула проведены.');
             gameState.activePoolId = null;
-            if (allPoolsComplete()) {
-                alert('Этап пулов завершён. Нажмите «Сформировать сетку».');
+            if (allPoolsComplete() && !gameState.bracket) {
+                showPoolRankingsOverlay({ showFormBracket: false });
+            } else {
+                alert('Все бои выбранного пула проведены.');
             }
         }
         syncTournamentAfterFight();
@@ -2225,6 +2201,114 @@
         resolveBracketByesInRound(0);
     }
 
+    var poolRankingsContinueCallback = null;
+
+    function renderPoolRankingsTable() {
+        var tbody = document.getElementById('poolRankingsTableBody');
+        if (!tbody) return;
+
+        var rows = getGlobalPoolStandings();
+        tbody.innerHTML = '';
+
+        if (!rows.length) {
+            var tr = document.createElement('tr');
+            tr.innerHTML = '<td colspan="6" class="pool-rankings-empty">Нет результатов пулов</td>';
+            tbody.appendChild(tr);
+            return;
+        }
+
+        for (var i = 0; i < rows.length; i++) {
+            var row = rows[i];
+            var tr = document.createElement('tr');
+            tr.innerHTML =
+                '<td class="col-place">' + (i + 1) + '</td>' +
+                '<td class="col-name">' + escapeHtml(row.name) + '</td>' +
+                '<td class="col-num">' + row.wins + '</td>' +
+                '<td class="col-num">' + row.losses + '</td>' +
+                '<td class="col-num">' + row.pointsScored + '</td>' +
+                '<td class="col-num">' + row.pointsReceived + '</td>';
+            tbody.appendChild(tr);
+        }
+    }
+
+    function escapeHtml(text) {
+        return String(text)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function showPoolRankingsOverlay(options) {
+        options = options || {};
+        poolRankingsContinueCallback = typeof options.onContinue === 'function' ? options.onContinue : null;
+
+        renderPoolRankingsTable();
+
+        var continueBtn = document.getElementById('poolRankingsContinueBtn');
+        var rankingsBtn = document.getElementById('showPoolRankingsBtn');
+        if (continueBtn) {
+            if (options.showFormBracket) {
+                continueBtn.classList.remove('hidden');
+            } else {
+                continueBtn.classList.add('hidden');
+            }
+        }
+        if (rankingsBtn && allPoolsComplete() && !gameState.bracket) {
+            rankingsBtn.classList.remove('hidden');
+        }
+
+        var overlay = document.getElementById('poolRankingsOverlay');
+        if (overlay) overlay.style.display = 'flex';
+    }
+
+    function hidePoolRankingsOverlay() {
+        var overlay = document.getElementById('poolRankingsOverlay');
+        if (overlay) overlay.style.display = 'none';
+        poolRankingsContinueCallback = null;
+    }
+
+    function confirmPoolRankingsAndFormBracket() {
+        var cb = poolRankingsContinueCallback;
+        hidePoolRankingsOverlay();
+        if (cb) cb();
+    }
+
+    function showPoolRankingsFromToolbar() {
+        if (!allPoolsComplete()) {
+            alert('Рейтинг доступен после проведения всех боёв в пулах.');
+            return;
+        }
+        showPoolRankingsOverlay({ showFormBracket: false });
+    }
+
+    function previewPoolRankingsDemo() {
+        gameState.participants = [
+            { id: 'p1', name: 'Алексей' },
+            { id: 'p2', name: 'Борис' },
+            { id: 'p3', name: 'Виктор' },
+            { id: 'p4', name: 'Григорий' },
+            { id: 'p5', name: 'Дмитрий' },
+            { id: 'p6', name: 'Егор' }
+        ];
+        gameState.poolMatches = {
+            demo: [
+                { id: 'd1', fighter1Id: 'p1', fighter2Id: 'p2', status: 'done', winnerId: 'p1',
+                    result: { redScore: 10, blueScore: 5, redBonus: 0, blueBonus: 0 } },
+                { id: 'd2', fighter1Id: 'p3', fighter2Id: 'p4', status: 'done', winnerId: 'p3',
+                    result: { redScore: 12, blueScore: 8, redBonus: 0, blueBonus: 0 } },
+                { id: 'd3', fighter1Id: 'p1', fighter2Id: 'p3', status: 'done', winnerId: 'p3',
+                    result: { redScore: 7, blueScore: 11, redBonus: 0, blueBonus: 0 } },
+                { id: 'd4', fighter1Id: 'p2', fighter2Id: 'p4', status: 'done', winnerId: 'p2',
+                    result: { redScore: 9, blueScore: 6, redBonus: 0, blueBonus: 0 } },
+                { id: 'd5', fighter1Id: 'p5', fighter2Id: 'p6', status: 'done', winnerId: 'p5',
+                    result: { redScore: 14, blueScore: 9, redBonus: 0, blueBonus: 0 } }
+            ]
+        };
+        document.getElementById('startMenuOverlay').style.display = 'none';
+        showPoolRankingsOverlay({ showFormBracket: false });
+    }
+
     function formBracket() {
         if (!allPoolsComplete()) {
             alert('Сначала проведите все бои во всех пулах.');
@@ -2235,6 +2319,16 @@
             renderBracket();
             return;
         }
+
+        showPoolRankingsOverlay({
+            showFormBracket: true,
+            onContinue: formBracketAfterRankings
+        });
+        hidePoolSelectModal();
+    }
+
+    function formBracketAfterRankings() {
+        hidePoolRankingsOverlay();
 
         var count = readQualifyingAdvancersCount();
         if (!count || count < 2) {
@@ -2317,6 +2411,10 @@
 
     function maybeRunBracketPreviewFromUrl() {
         var params = new URLSearchParams(window.location.search);
+        if (params.get('previewRankings')) {
+            previewPoolRankingsDemo();
+            return;
+        }
         var preview = params.get('previewBracket');
         if (!preview) return;
 
@@ -2795,6 +2893,9 @@
         showPoolSelectModal: showPoolSelectModal,
         hidePoolSelectModal: hidePoolSelectModal,
         formBracket: formBracket,
+        showPoolRankingsOverlay: showPoolRankingsOverlay,
+        hidePoolRankingsOverlay: hidePoolRankingsOverlay,
+        previewPoolRankingsDemo: previewPoolRankingsDemo,
         hideBracketOverlay: hideBracketOverlay,
         backFromBracket: backFromBracket,
         backFromPoolSelect: backFromPoolSelect,
@@ -2826,6 +2927,9 @@
     global.onPoolArenaAssignChanged = onPoolArenaAssignChanged;
     global.hidePoolSelectModal = hidePoolSelectModal;
     global.formBracket = formBracket;
+    global.showPoolRankingsFromToolbar = showPoolRankingsFromToolbar;
+    global.confirmPoolRankingsAndFormBracket = confirmPoolRankingsAndFormBracket;
+    global.hidePoolRankingsOverlay = hidePoolRankingsOverlay;
     global.hideBracketOverlay = hideBracketOverlay;
     global.backFromBracket = backFromBracket;
     global.backFromPoolSelect = backFromPoolSelect;
