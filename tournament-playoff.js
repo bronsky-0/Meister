@@ -935,6 +935,16 @@
         return null;
     }
 
+    function arenaHasAssignedPool(arenaId) {
+        if (!arenaId) return false;
+        for (var i = 0; i < gameState.pools.length; i++) {
+            if (getPoolAssignedArena(gameState.pools[i].id) === arenaId) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     function areArenaPoolFightsComplete(arenaId) {
         var hasAssigned = false;
         for (var i = 0; i < gameState.pools.length; i++) {
@@ -1008,7 +1018,16 @@
 
     function refreshArenaTerminalUi() {
         if (!isNetworkArenaDevice()) return;
-        if (gameState.activePoolMatchId || gameState.activeBracketMatch) return;
+
+        var term = document.getElementById('secretaryTerminal');
+        if (gameState.activePoolMatchId || gameState.activeBracketMatch) {
+            hideArenaWaitOverlay();
+            hideArenaStageCompleteOverlay();
+            if (term) term.classList.remove('hidden');
+            return;
+        }
+
+        if (term) term.classList.add('hidden');
 
         if (isArenaStageCompleteForTerminal()) {
             showArenaStageCompleteOverlay();
@@ -1017,8 +1036,8 @@
 
         hideArenaStageCompleteOverlay();
         var remote = typeof NetworkSync !== 'undefined' ? NetworkSync.getState().lastRemoteState : null;
-        updateArenaWaitOverlay(remote, findHostAssignedFightForArena(remote, getLocalArenaId()));
-        tryAutoJoinHostAssignedFight(remote);
+        var arenaId = getLocalArenaId();
+        updateArenaWaitOverlay(remote, findHostAssignedFightForArena(remote, arenaId));
     }
 
     function hostDispatchClaim(item, arenaId, options) {
@@ -1170,13 +1189,29 @@
 
         if (!assignment) {
             waitEl.style.display = 'flex';
+            var arenaId = getLocalArenaId();
             if (titleEl) {
-                titleEl.textContent = 'Площадка ' + getLocalArenaId() + ' — ожидание';
+                titleEl.textContent = 'Площадка ' + arenaId + ' — ожидание хоста';
             }
-            var stageHint = isPoolStageActive()
-                ? 'Ожидание назначения пула на эту площадку…'
-                : 'Ожидание следующего боя сетки…';
-            hintEl.textContent = stageHint;
+            if (!remoteState.tournament || !remoteState.tournament.playoffStarted) {
+                hintEl.textContent = 'Турнир ещё не начат. Главное устройство настраивает или запускает плей-офф.';
+            } else if (isPoolStageActive()) {
+                if (!arenaHasAssignedPool(arenaId)) {
+                    hintEl.textContent = 'Ожидание: хост назначит пул на площадку ' + arenaId + '.';
+                } else if (areArenaPoolFightsComplete(arenaId)) {
+                    hintEl.textContent = 'Бои пулов на этой площадке завершены.';
+                } else {
+                    hintEl.textContent = 'Пул назначен. Ожидание запуска боя хостом…';
+                }
+            } else if (isBracketStageActive()) {
+                if (areArenaBracketFightsComplete(arenaId)) {
+                    hintEl.textContent = 'Бои сетки на этой площадке завершены.';
+                } else {
+                    hintEl.textContent = 'Ожидание: хост запустит бой сетки на площадку ' + arenaId + '.';
+                }
+            } else {
+                hintEl.textContent = 'Ожидание действий главного устройства.';
+            }
             return;
         }
 
@@ -1318,11 +1353,9 @@
         if (t.playoffStarted && !inFight) {
             document.getElementById('startMenuOverlay').style.display = 'none';
             document.getElementById('poolsOverlay').style.display = 'none';
-            if (isNetworkArenaDevice()) {
-                var waitEl = document.getElementById('arenaWaitOverlay');
-                if (waitEl) waitEl.style.display = 'none';
+            if (!isNetworkArenaDevice()) {
+                showSecretaryTerminal();
             }
-            showSecretaryTerminal();
         }
 
         updateTournamentBar();
@@ -1348,6 +1381,7 @@
         enforceTournamentNavigation();
 
         if (!options.skipAutoJoin && isNetworkArenaDevice()) {
+            refreshArenaTerminalUi();
             tryAutoJoinHostAssignedFight(remoteState);
         }
 
@@ -3559,6 +3593,7 @@
         resetPlayoffState: resetPlayoffState,
         onSaveFightHook: onSaveFightHook,
         applyRemoteTournamentState: applyRemoteTournamentState,
+        refreshArenaTerminalUi: refreshArenaTerminalUi,
         showArenaMatchSelectModal: showArenaMatchSelectModal,
         syncTournamentToServer: syncTournamentToServer,
         populateNetworkArenaSelects: populateNetworkArenaSelects,
