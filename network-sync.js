@@ -17,7 +17,9 @@
         connected: false,
         remoteVersion: 0,
         eventSource: null,
-        activeMatchKey: null
+        activeMatchKey: null,
+        lastRemoteState: null,
+        hostDeviceId: null
     };
 
     var onStateCallbacks = [];
@@ -252,6 +254,10 @@
     }
 
     function notifyState(remoteState) {
+        networkState.lastRemoteState = remoteState || null;
+        networkState.hostDeviceId = remoteState && remoteState.hostDeviceId
+            ? remoteState.hostDeviceId
+            : null;
         for (var i = 0; i < onStateCallbacks.length; i++) {
             onStateCallbacks[i](remoteState);
         }
@@ -396,11 +402,13 @@
         });
     }
 
-    function claimMatch(matchType, refs, arenaId) {
+    function claimMatch(matchType, refs, arenaId, options) {
+        options = options || {};
         var body = {
             deviceId: networkState.deviceId,
             matchType: matchType,
-            arenaId: arenaId || networkState.arenaId
+            arenaId: arenaId || networkState.arenaId,
+            reopen: !!options.reopen
         };
         if (matchType === 'pool') {
             body.poolId = refs.poolId;
@@ -429,6 +437,24 @@
             })
         }).then(function(data) {
             networkState.activeMatchKey = null;
+            if (data && data.state) {
+                networkState.remoteVersion = data.state.version || networkState.remoteVersion;
+                notifyState(data.state);
+            }
+            return data;
+        });
+    }
+
+    function joinMatch(matchKey) {
+        networkState.activeMatchKey = matchKey;
+        return fetchJson('/api/match/join', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                deviceId: networkState.deviceId,
+                matchKey: matchKey
+            })
+        }).then(function(data) {
             if (data && data.state) {
                 networkState.remoteVersion = data.state.version || networkState.remoteVersion;
                 notifyState(data.state);
@@ -503,6 +529,7 @@
         registerArena: registerArena,
         pushTournament: pushTournament,
         claimMatch: claimMatch,
+        joinMatch: joinMatch,
         completeMatch: completeMatch,
         releaseMatch: releaseMatch,
         getTournamentSnapshot: getTournamentSnapshot,
