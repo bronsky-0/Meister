@@ -194,8 +194,12 @@
     };
 
     global.persistActiveTournamentNominationIfAny = function() {
-        if (typeof MeisterTournaments !== 'undefined') {
-            MeisterTournaments.persistActiveNominationFromGameState(global.gameState);
+        if (typeof NetworkSync !== 'undefined' && NetworkSync.isArena()) {
+            return false;
         }
+        if (typeof MeisterTournaments !== 'undefined') {
+            return MeisterTournaments.persistActiveNominationFromGameState(global.gameState);
+        }
+        return false;
     };
 })(window);
