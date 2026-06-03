@@ -460,7 +460,9 @@ function createSyncServer(options) {
                 sendJson(res, 403, { error: 'Fight not assigned by host' });
                 return;
             }
-            if (lock.arenaId !== device.arenaId) {
+            const lockArenaId = parseInt(lock.arenaId, 10);
+            const deviceArenaId = parseInt(device.arenaId, 10);
+            if (!lockArenaId || lockArenaId !== deviceArenaId) {
                 sendJson(res, 403, { error: 'Fight assigned to another arena' });
                 return;
             }

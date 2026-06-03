@@ -100,7 +100,10 @@
             playoffStarted: !!gs.playoffStarted,
             qualifyingAdvancersCount: gs.qualifyingAdvancersCount != null ? gs.qualifyingAdvancersCount : null,
             tournamentFightHistory: gs.tournamentFightHistory ? gs.tournamentFightHistory.slice() : [],
-            poolArenaAssignments: gs.poolArenaAssignments ? JSON.parse(JSON.stringify(gs.poolArenaAssignments)) : {}
+            poolArenaAssignments: gs.poolArenaAssignments ? JSON.parse(JSON.stringify(gs.poolArenaAssignments)) : {},
+            bracketArenaAssignments: gs.bracketArenaAssignments
+                ? JSON.parse(JSON.stringify(gs.bracketArenaAssignments))
+                : {}
         };
     }
 
@@ -122,6 +125,9 @@
             : [];
         gs.poolArenaAssignments = nomination.poolArenaAssignments
             ? JSON.parse(JSON.stringify(nomination.poolArenaAssignments))
+            : {};
+        gs.bracketArenaAssignments = nomination.bracketArenaAssignments
+            ? JSON.parse(JSON.stringify(nomination.bracketArenaAssignments))
             : {};
         gs.tournamentMode = !!nomination.playoffStarted;
     }
@@ -146,6 +152,9 @@
         nomination.tournamentFightHistory = patch.tournamentFightHistory;
         nomination.poolArenaAssignments = patch.poolArenaAssignments
             ? JSON.parse(JSON.stringify(patch.poolArenaAssignments))
+            : {};
+        nomination.bracketArenaAssignments = patch.bracketArenaAssignments
+            ? JSON.parse(JSON.stringify(patch.bracketArenaAssignments))
             : {};
 
         updateTournament(found.tournament);
