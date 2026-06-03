@@ -451,6 +451,12 @@
                 deviceId: networkState.deviceId,
                 tournament: tournament
             })
+        }).then(function(data) {
+            if (data && data.state) {
+                networkState.remoteVersion = data.state.version || networkState.remoteVersion;
+                notifyState(data.state);
+            }
+            return data;
         });
     }
 
