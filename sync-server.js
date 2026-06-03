@@ -210,6 +210,73 @@ function createSyncServer(options) {
         return assigned !== null && assigned === arenaId;
     }
 
+    function isPoolStageTournament(tournament) {
+        return !!(tournament && tournament.playoffStarted && !tournament.bracket);
+    }
+
+    function areArenaPoolFightsComplete(tournament, arenaId) {
+        if (!tournament || !tournament.pools) return false;
+        arenaId = parseInt(arenaId, 10);
+        let hasAssigned = false;
+        for (let i = 0; i < tournament.pools.length; i++) {
+            const poolId = tournament.pools[i].id;
+            if (getPoolAssignedArena(tournament, poolId) !== arenaId) continue;
+            hasAssigned = true;
+            const matches = (tournament.poolMatches && tournament.poolMatches[poolId]) || [];
+            for (let m = 0; m < matches.length; m++) {
+                if (matches[m].status !== 'done') return false;
+            }
+        }
+        return hasAssigned;
+    }
+
+    function findNextPendingPoolMatchForArena(tournament, arenaId) {
+        if (!tournament || !tournament.pools) return null;
+        arenaId = parseInt(arenaId, 10);
+        for (let i = 0; i < tournament.pools.length; i++) {
+            const poolId = tournament.pools[i].id;
+            if (getPoolAssignedArena(tournament, poolId) !== arenaId) continue;
+            const matches = (tournament.poolMatches && tournament.poolMatches[poolId]) || [];
+            for (let m = 0; m < matches.length; m++) {
+                if (matches[m].status === 'pending') {
+                    return { poolId: poolId, matchId: matches[m].id, match: matches[m] };
+                }
+            }
+        }
+        return null;
+    }
+
+    function hostClaimPoolMatchForArena(arenaId, poolId, matchId) {
+        if (!state.hostDeviceId || !state.tournament) return null;
+        const match = findPoolMatch(state.tournament, poolId, matchId);
+        if (!match || match.status !== 'pending') return null;
+        const matchKey = poolMatchKey(poolId, matchId);
+        if (state.matchLocks[matchKey]) return null;
+        match.status = 'in_progress';
+        match.arenaId = arenaId;
+        state.matchLocks[matchKey] = {
+            deviceId: state.hostDeviceId,
+            arenaId: arenaId,
+            matchType: 'pool',
+            poolId: poolId,
+            matchId: matchId,
+            bracketLoc: null,
+            arenaDeviceId: null,
+            since: Date.now()
+        };
+        return matchKey;
+    }
+
+    function autoDispatchNextPoolFightForArena(arenaId) {
+        if (!state.hostDeviceId || !isPoolStageTournament(state.tournament)) return;
+        arenaId = parseInt(arenaId, 10);
+        if (!arenaId || areArenaPoolFightsComplete(state.tournament, arenaId)) return;
+        const next = findNextPendingPoolMatchForArena(state.tournament, arenaId);
+        if (next) {
+            hostClaimPoolMatchForArena(arenaId, next.poolId, next.matchId);
+        }
+    }
+
     function reopenMatchForEdit(match) {
         match.status = 'in_progress';
         delete match.winnerId;
@@ -502,6 +569,9 @@ function createSyncServer(options) {
             state.tournament = body.tournament;
             if (matchKey && state.matchLocks[matchKey]) {
                 delete state.matchLocks[matchKey];
+            }
+            if (device.role === 'arena' && device.arenaId && isPoolStageTournament(state.tournament)) {
+                autoDispatchNextPoolFightForArena(device.arenaId);
             }
             bumpVersion();
             sendJson(res, 200, { ok: true, state: getPublicState() });
