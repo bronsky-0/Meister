@@ -1350,12 +1350,30 @@
         hintEl.textContent = 'Главное устройство запустило: ' + label;
     }
 
+    function readHostArenaCountForRegistration() {
+        var input = document.getElementById('arenaCountInput');
+        if (input && input.value) {
+            var n = parseInt(input.value, 10);
+            if (n > 0) return n;
+        }
+        if (typeof NetworkSync !== 'undefined') {
+            var st = NetworkSync.getState();
+            if (st.arenaCount > 0) return st.arenaCount;
+        }
+        return 2;
+    }
+
     function syncTournamentToServer() {
         if (typeof global.persistActiveTournamentNominationIfAny === 'function') {
             global.persistActiveTournamentNominationIfAny();
         }
-        if (!isNetworkHost()) return Promise.resolve();
-        return NetworkSync.pushTournament(NetworkSync.getTournamentSnapshot(gameState)).catch(function(err) {
+        if (typeof NetworkSync === 'undefined' || !NetworkSync.isServerLinked() || isNetworkArenaDevice()) {
+            return Promise.resolve();
+        }
+        var arenaCount = readHostArenaCountForRegistration();
+        return NetworkSync.ensureHostRegistered(arenaCount).then(function() {
+            return NetworkSync.pushTournament(NetworkSync.getTournamentSnapshot(gameState));
+        }).catch(function(err) {
             alert('Ошибка синхронизации: ' + (err.message || err));
         });
     }
