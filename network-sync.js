@@ -355,6 +355,10 @@
     }
 
     function registerHost(arenaCount) {
+        var count = parseInt(arenaCount, 10);
+        if (!count || count < 1) {
+            count = 2;
+        }
         return fetchJson('/api/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -363,20 +367,58 @@
                 role: 'host',
                 name: networkState.deviceName
             })
-        }).then(function() {
+        }).then(function(regData) {
             networkState.role = 'host';
+            if (regData && regData.state) {
+                applyServerStateSnapshot(regData.state);
+            }
             return fetchJson('/api/arena-count', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     deviceId: networkState.deviceId,
-                    arenaCount: arenaCount
+                    arenaCount: count
                 })
             });
         }).then(function(data) {
-            networkState.arenaCount = arenaCount;
-            if (data.state) notifyState(data.state);
+            networkState.arenaCount = count;
+            networkState.role = 'host';
+            if (data && data.state) {
+                notifyState(data.state);
+            }
             return data;
+        });
+    }
+
+    /**
+     * Регистрирует главное устройство на сервере, если ещё не зарегистрировано.
+     * Нужно перед push турнира — хост часто пропускает шаг «Продолжить настройку турнира» в сети.
+     */
+    function ensureHostRegistered(arenaCount) {
+        if (!isServerLinked()) {
+            return Promise.reject(new Error('Сначала подключитесь к серверу (кнопка «Подключиться»).'));
+        }
+        if (networkState.role === 'arena') {
+            return Promise.reject(new Error('Это устройство уже подключено как терминал площадки.'));
+        }
+        var count = parseInt(arenaCount, 10);
+        if (!count || count < 1) {
+            count = networkState.arenaCount > 0 ? networkState.arenaCount : 2;
+        }
+        return refreshServerState().then(function(state) {
+            if (state.hostDeviceId && state.hostDeviceId !== networkState.deviceId) {
+                return Promise.reject(new Error(
+                    'На сервере уже зарегистрировано другое главное устройство. Перезапустите сервер турнира на хосте.'
+                ));
+            }
+            if (state.hostDeviceId === networkState.deviceId && state.arenaCount > 0) {
+                networkState.role = 'host';
+                networkState.arenaCount = state.arenaCount;
+                return state;
+            }
+            return registerHost(count).then(function() {
+                return refreshServerState();
+            });
         });
     }
 
@@ -554,6 +596,7 @@
         pingServer: pingServer,
         pingServerDetailed: pingServerDetailed,
         registerHost: registerHost,
+        ensureHostRegistered: ensureHostRegistered,
         registerArena: registerArena,
         pushTournament: pushTournament,
         claimMatch: claimMatch,
