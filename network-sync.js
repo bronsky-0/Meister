@@ -501,8 +501,14 @@
         }));
     }
 
+    /** Сервер найден и connect() прошёл (роль ещё не назначена). */
+    function isServerLinked() {
+        return !!networkState.enabled && !!networkState.serverUrl;
+    }
+
+    /** Участие в турнире: связь с сервером + роль host/arena. */
     function isNetworkEnabled() {
-        return !!networkState.enabled && !!networkState.role;
+        return isServerLinked() && !!networkState.role;
     }
 
     function isServerReachable() {
@@ -546,6 +552,7 @@
         getTournamentSnapshot: getTournamentSnapshot,
         setDeviceName: setDeviceName,
         isNetworkEnabled: isNetworkEnabled,
+        isServerLinked: isServerLinked,
         isServerReachable: isServerReachable,
         isHost: isHost,
         isArena: isArena,
