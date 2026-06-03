@@ -253,14 +253,29 @@
         }
     }
 
+    function applyServerStateSnapshot(remoteState) {
+        if (!remoteState) return;
+        networkState.remoteVersion = remoteState.version || networkState.remoteVersion || 0;
+        networkState.arenaCount = remoteState.arenaCount || 0;
+        networkState.hostDeviceId = remoteState.hostDeviceId || null;
+        networkState.lastRemoteState = remoteState;
+    }
+
     function notifyState(remoteState) {
-        networkState.lastRemoteState = remoteState || null;
-        networkState.hostDeviceId = remoteState && remoteState.hostDeviceId
-            ? remoteState.hostDeviceId
-            : null;
+        applyServerStateSnapshot(remoteState);
         for (var i = 0; i < onStateCallbacks.length; i++) {
             onStateCallbacks[i](remoteState);
         }
+    }
+
+    function refreshServerState() {
+        if (!networkState.serverUrl) {
+            return Promise.reject(new Error('Сначала укажите адрес сервера и нажмите «Подключиться»'));
+        }
+        return fetchJson('/api/state').then(function(state) {
+            notifyState(state);
+            return state;
+        });
     }
 
     function disconnectEventSource() {
@@ -279,10 +294,7 @@
 
         es.addEventListener('state', function(event) {
             try {
-                var remoteState = JSON.parse(event.data);
-                networkState.remoteVersion = remoteState.version || 0;
-                networkState.arenaCount = remoteState.arenaCount || 0;
-                notifyState(remoteState);
+                notifyState(JSON.parse(event.data));
             } catch (e) {
                 // ignore parse errors
             }
@@ -325,8 +337,6 @@
             connectSSE();
             notifyConnection();
             return fetchJson('/api/state').then(function(state) {
-                networkState.remoteVersion = state.version || 0;
-                networkState.arenaCount = state.arenaCount || 0;
                 notifyState(state);
                 return state;
             });
@@ -538,6 +548,7 @@
     global.NetworkSync = {
         DEFAULT_PORT: DEFAULT_PORT,
         connect: connect,
+        refreshServerState: refreshServerState,
         autoConnectIfSaved: autoConnectIfSaved,
         discoverServers: discoverServers,
         pingServer: pingServer,
