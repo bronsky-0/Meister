@@ -423,6 +423,12 @@
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
+        }).then(function(data) {
+            if (data && data.state) {
+                networkState.remoteVersion = data.state.version || networkState.remoteVersion;
+                notifyState(data.state);
+            }
+            return data;
         });
     }
 
@@ -490,12 +496,17 @@
             qualifyingAdvancersCount: gs.qualifyingAdvancersCount,
             tournamentFightHistory: gs.tournamentFightHistory,
             hostSelectedArenaId: gs.hostSelectedArenaId || null,
-            poolArenaAssignments: gs.poolArenaAssignments || {}
+            poolArenaAssignments: gs.poolArenaAssignments || {},
+            bracketArenaAssignments: gs.bracketArenaAssignments || {}
         }));
     }
 
     function isNetworkEnabled() {
-        return networkState.enabled && networkState.connected;
+        return !!networkState.enabled && !!networkState.role;
+    }
+
+    function isServerReachable() {
+        return !!networkState.enabled && !!networkState.connected;
     }
 
     function isHost() {
@@ -535,6 +546,7 @@
         getTournamentSnapshot: getTournamentSnapshot,
         setDeviceName: setDeviceName,
         isNetworkEnabled: isNetworkEnabled,
+        isServerReachable: isServerReachable,
         isHost: isHost,
         isArena: isArena,
         getState: getState,
