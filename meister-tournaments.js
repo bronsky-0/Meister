@@ -89,6 +89,21 @@
         return true;
     }
 
+    function deleteTournament(tournamentId) {
+        var found = findTournament(tournamentId);
+        if (!found) return false;
+        found.list.splice(found.index, 1);
+        saveAll(found.list);
+        return true;
+    }
+
+    function clearActiveTournamentIfDeleted(gs, tournamentId) {
+        if (gs && gs.activeTournamentId === tournamentId) {
+            gs.activeTournamentId = null;
+            gs.activeNominationId = null;
+        }
+    }
+
     function extractNominationState(gs) {
         return {
             tournamentSystem: gs.tournamentSystem || null,
@@ -194,6 +209,8 @@
             return found ? found.tournament : null;
         },
         updateTournament: updateTournament,
+        deleteTournament: deleteTournament,
+        clearActiveTournamentIfDeleted: clearActiveTournamentIfDeleted,
         findNomination: findNomination,
         applyNominationToGameState: applyNominationToGameState,
         persistActiveNominationFromGameState: persistActiveNominationFromGameState,
