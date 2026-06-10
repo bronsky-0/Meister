@@ -2382,16 +2382,38 @@
         if (!loc) return null;
         if (loc.side === 'bronze') return 'bronze';
         if (loc.side === 'final') return 'final';
-        return 'side:' + loc.roundIndex;
+        if (loc.side === 'left' || loc.side === 'right') {
+            return loc.side + ':' + loc.roundIndex;
+        }
+        return null;
+    }
+
+    function resolveBracketArenaAssignment(phaseKey) {
+        ensureBracketArenaAssignments();
+        if (!phaseKey) return null;
+        var direct = gameState.bracketArenaAssignments[phaseKey];
+        if (direct) return normalizeArenaId(direct);
+        if (phaseKey.indexOf('left:') === 0 || phaseKey.indexOf('right:') === 0) {
+            var legacyKey = 'side:' + phaseKey.split(':')[1];
+            var legacy = gameState.bracketArenaAssignments[legacyKey];
+            if (legacy) return normalizeArenaId(legacy);
+        }
+        return null;
     }
 
     function getBracketPhaseLabel(phaseKey) {
         if (!phaseKey) return 'Этап';
         if (phaseKey === 'bronze') return 'За 3-е место';
         if (phaseKey === 'final') return 'Финал';
+        if (phaseKey.indexOf('left:') === 0) {
+            return 'Левая сторона · ' + getBracketRoundLabel(parseInt(phaseKey.split(':')[1], 10));
+        }
+        if (phaseKey.indexOf('right:') === 0) {
+            return 'Правая сторона · ' + getBracketRoundLabel(parseInt(phaseKey.split(':')[1], 10));
+        }
         if (phaseKey.indexOf('side:') === 0) {
             var r = parseInt(phaseKey.split(':')[1], 10);
-            return getBracketRoundLabel(r);
+            return getBracketRoundLabel(r) + ' (обе стороны)';
         }
         return phaseKey;
     }
@@ -2401,7 +2423,9 @@
         if (!gameState.bracket) return phases;
         var maxR = getLastSideRoundIndex();
         for (var r = 0; r <= maxR; r++) {
-            phases.push({ key: 'side:' + r, label: getBracketRoundLabel(r) });
+            var roundLabel = getBracketRoundLabel(r);
+            phases.push({ key: 'left:' + r, label: 'Левая сторона · ' + roundLabel });
+            phases.push({ key: 'right:' + r, label: 'Правая сторона · ' + roundLabel });
         }
         phases.push({ key: 'bronze', label: 'За 3-е место' });
         phases.push({ key: 'final', label: 'Финал' });
@@ -2412,16 +2436,29 @@
         var result = [];
         if (!gameState.bracket || !phaseKey) return result;
 
-        if (phaseKey.indexOf('side:') === 0) {
-            var r = parseInt(phaseKey.split(':')[1], 10);
-            for (var si = 0; si < 2; si++) {
-                var side = si === 0 ? 'left' : 'right';
-                var half = gameState.bracket[side];
-                if (!half || !half.rounds || !half.rounds[r]) continue;
+        if (phaseKey.indexOf('left:') === 0 || phaseKey.indexOf('right:') === 0) {
+            var parts = phaseKey.split(':');
+            var side = parts[0];
+            var r = parseInt(parts[1], 10);
+            var half = gameState.bracket[side];
+            if (half && half.rounds && half.rounds[r]) {
                 for (var m = 0; m < half.rounds[r].length; m++) {
                     result.push({
                         match: half.rounds[r][m],
                         loc: { side: side, roundIndex: r, matchIndex: m }
+                    });
+                }
+            }
+        } else if (phaseKey.indexOf('side:') === 0) {
+            var legacyR = parseInt(phaseKey.split(':')[1], 10);
+            for (var si = 0; si < 2; si++) {
+                var legacySide = si === 0 ? 'left' : 'right';
+                var legacyHalf = gameState.bracket[legacySide];
+                if (!legacyHalf || !legacyHalf.rounds || !legacyHalf.rounds[legacyR]) continue;
+                for (var lm = 0; lm < legacyHalf.rounds[legacyR].length; lm++) {
+                    result.push({
+                        match: legacyHalf.rounds[legacyR][lm],
+                        loc: { side: legacySide, roundIndex: legacyR, matchIndex: lm }
                     });
                 }
             }
@@ -2455,9 +2492,7 @@
     }
 
     function getBracketAssignedArena(phaseKey) {
-        ensureBracketArenaAssignments();
-        var val = gameState.bracketArenaAssignments[phaseKey];
-        return val ? parseInt(val, 10) : null;
+        return resolveBracketArenaAssignment(phaseKey);
     }
 
     function setBracketAssignedArena(phaseKey, arenaId) {
@@ -2471,11 +2506,15 @@
     }
 
     function isBracketPhaseOnArena(phaseKey, arenaId) {
-        var assigned = getBracketAssignedArena(phaseKey);
+        var assigned = resolveBracketArenaAssignment(phaseKey);
         if (!assigned) {
             return isTournamentHostDevice();
         }
         return assigned === normalizeArenaId(arenaId);
+    }
+
+    function isBracketLocOnArena(loc, arenaId) {
+        return isBracketPhaseOnArena(getBracketPhaseKeyFromLoc(loc), arenaId);
     }
 
     function getArenaIdForBracketFight(loc) {
@@ -2720,11 +2759,14 @@
 
         var assignRow = document.getElementById('poolArenaAssignRow');
         var assignSelect = document.getElementById('poolArenaAssignSelect');
+        var assignHint = document.getElementById('poolArenaAssignHint');
         if (isTournamentHostDevice()) {
             if (assignRow) assignRow.style.display = 'flex';
+            if (assignHint) assignHint.style.display = '';
             populatePoolArenaSelect(assignSelect, getPoolAssignedArena(poolId), true);
         } else if (assignRow) {
             assignRow.style.display = 'none';
+            if (assignHint) assignHint.style.display = 'none';
         }
 
         renderPoolFightList(poolId);
@@ -2754,9 +2796,10 @@
 
         var normalizedArena = normalizeArenaId(arenaId);
         syncTournamentToServer().then(function() {
-            if (normalizedArena) {
+            if (!normalizedArena) return;
+            return ensureHostRoleForOperations().then(function() {
                 return dispatchNextFightForArena(normalizedArena);
-            }
+            });
         }).catch(function() {
             /* syncTournamentToServer уже показал alert */
         });
@@ -2844,11 +2887,14 @@
 
         var assignRow = document.getElementById('bracketArenaAssignRow');
         var assignSelect = document.getElementById('bracketArenaAssignSelect');
+        var assignHint = document.getElementById('bracketArenaAssignHint');
         if (isTournamentHostDevice()) {
             if (assignRow) assignRow.style.display = 'flex';
+            if (assignHint) assignHint.style.display = '';
             populatePoolArenaSelect(assignSelect, getBracketAssignedArena(phaseKey), true);
         } else if (assignRow) {
             assignRow.style.display = 'none';
+            if (assignHint) assignHint.style.display = 'none';
         }
 
         renderBracketFightList(phaseKey);
@@ -2969,9 +3015,10 @@
 
         var normalizedArena = normalizeArenaId(arenaId);
         syncTournamentToServer().then(function() {
-            if (normalizedArena) {
+            if (!normalizedArena) return;
+            return ensureHostRoleForOperations().then(function() {
                 return dispatchNextFightForArena(normalizedArena);
-            }
+            });
         }).catch(function() {});
     }
 
