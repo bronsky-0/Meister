@@ -279,6 +279,14 @@ function createSyncServer(options) {
         return merged;
     }
 
+    function mergeArenaAssignmentsPreserving(existing, incoming) {
+        if (!existing) return incoming ? JSON.parse(JSON.stringify(incoming)) : {};
+        if (!incoming || !Object.keys(incoming).length) {
+            return JSON.parse(JSON.stringify(existing));
+        }
+        return Object.assign({}, existing, incoming);
+    }
+
     function mergeTournamentPreservingExisting(existing, incoming) {
         if (!existing) return incoming;
         if (!incoming) return existing;
@@ -290,6 +298,14 @@ function createSyncServer(options) {
         if (incoming.bracket || existing.bracket) {
             merged.bracket = mergeBracketPreservingExisting(existing.bracket, incoming.bracket);
         }
+        merged.poolArenaAssignments = mergeArenaAssignmentsPreserving(
+            existing.poolArenaAssignments,
+            incoming.poolArenaAssignments
+        );
+        merged.bracketArenaAssignments = mergeArenaAssignmentsPreserving(
+            existing.bracketArenaAssignments,
+            incoming.bracketArenaAssignments
+        );
         if (existing.tournamentFightHistory && existing.tournamentFightHistory.length &&
             (!incoming.tournamentFightHistory || incoming.tournamentFightHistory.length <
                 existing.tournamentFightHistory.length)) {
@@ -647,6 +663,14 @@ function createSyncServer(options) {
                 return;
             }
             state.tournament = mergeTournamentPreservingExisting(state.tournament, body.tournament);
+            if (body.tournament.poolArenaAssignments !== undefined) {
+                state.tournament.poolArenaAssignments =
+                    JSON.parse(JSON.stringify(body.tournament.poolArenaAssignments));
+            }
+            if (body.tournament.bracketArenaAssignments !== undefined) {
+                state.tournament.bracketArenaAssignments =
+                    JSON.parse(JSON.stringify(body.tournament.bracketArenaAssignments));
+            }
             bumpVersion();
             sendJson(res, 200, { ok: true, state: getPublicState() });
             return;
@@ -781,7 +805,7 @@ function createSyncServer(options) {
                 return;
             }
 
-            state.tournament = body.tournament;
+            state.tournament = mergeTournamentPreservingExisting(state.tournament, body.tournament);
             if (matchKey && state.matchLocks[matchKey]) {
                 delete state.matchLocks[matchKey];
             }
