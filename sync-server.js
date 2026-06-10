@@ -189,6 +189,115 @@ function createSyncServer(options) {
         return half.rounds[loc.roundIndex][loc.matchIndex] || null;
     }
 
+    const PLAYOFF_PHASE_ORDER = { side: 0, bronze: 1, final: 2, complete: 3 };
+
+    function mergeMatchPreservingExisting(existingMatch, incomingMatch) {
+        if (!existingMatch) return incomingMatch;
+        if (!incomingMatch) return existingMatch;
+        if (existingMatch.status === 'done') return existingMatch;
+        if (existingMatch.status === 'in_progress' &&
+            (incomingMatch.status === 'pending' || !incomingMatch.status)) {
+            return existingMatch;
+        }
+        return incomingMatch;
+    }
+
+    function mergePoolMatchesPreservingExisting(existingPm, incomingPm) {
+        const merged = incomingPm ? JSON.parse(JSON.stringify(incomingPm)) : {};
+        if (!existingPm) return merged;
+        for (const poolId of Object.keys(existingPm)) {
+            const existingMatches = existingPm[poolId];
+            if (!existingMatches) continue;
+            if (!merged[poolId]) {
+                merged[poolId] = JSON.parse(JSON.stringify(existingMatches));
+                continue;
+            }
+            const byId = {};
+            for (let i = 0; i < merged[poolId].length; i++) {
+                byId[merged[poolId][i].id] = merged[poolId][i];
+            }
+            for (let j = 0; j < existingMatches.length; j++) {
+                const existingMatch = existingMatches[j];
+                const incomingMatch = byId[existingMatch.id];
+                if (!incomingMatch) {
+                    merged[poolId].push(JSON.parse(JSON.stringify(existingMatch)));
+                    continue;
+                }
+                if (existingMatch.status === 'done' && incomingMatch.status !== 'done') {
+                    const idx = merged[poolId].indexOf(incomingMatch);
+                    merged[poolId][idx] = JSON.parse(JSON.stringify(existingMatch));
+                } else if (existingMatch.status === 'in_progress' &&
+                    (incomingMatch.status === 'pending' || !incomingMatch.status)) {
+                    const idx = merged[poolId].indexOf(incomingMatch);
+                    merged[poolId][idx] = JSON.parse(JSON.stringify(existingMatch));
+                }
+            }
+        }
+        return merged;
+    }
+
+    function mergeBracketPreservingExisting(existingBracket, incomingBracket) {
+        if (!incomingBracket) {
+            return existingBracket ? JSON.parse(JSON.stringify(existingBracket)) : null;
+        }
+        if (!existingBracket) return JSON.parse(JSON.stringify(incomingBracket));
+
+        const merged = JSON.parse(JSON.stringify(incomingBracket));
+
+        function mergeHalf(sideName) {
+            const existingHalf = existingBracket[sideName];
+            const incomingHalf = merged[sideName];
+            if (!existingHalf || !incomingHalf || !incomingHalf.rounds) return;
+            for (let r = 0; r < incomingHalf.rounds.length; r++) {
+                if (!existingHalf.rounds[r]) continue;
+                for (let m = 0; m < incomingHalf.rounds[r].length; m++) {
+                    incomingHalf.rounds[r][m] = mergeMatchPreservingExisting(
+                        existingHalf.rounds[r][m],
+                        incomingHalf.rounds[r][m]
+                    );
+                }
+            }
+        }
+
+        mergeHalf('left');
+        mergeHalf('right');
+        merged.thirdPlace = mergeMatchPreservingExisting(
+            existingBracket.thirdPlace,
+            merged.thirdPlace
+        );
+        merged.final = mergeMatchPreservingExisting(existingBracket.final, merged.final);
+
+        if ((existingBracket.activeRoundIndex || 0) > (merged.activeRoundIndex || 0)) {
+            merged.activeRoundIndex = existingBracket.activeRoundIndex;
+        }
+        const existingPhase = PLAYOFF_PHASE_ORDER[existingBracket.playoffPhase || 'side'] || 0;
+        const incomingPhase = PLAYOFF_PHASE_ORDER[merged.playoffPhase || 'side'] || 0;
+        if (existingPhase > incomingPhase) {
+            merged.playoffPhase = existingBracket.playoffPhase;
+        }
+
+        return merged;
+    }
+
+    function mergeTournamentPreservingExisting(existing, incoming) {
+        if (!existing) return incoming;
+        if (!incoming) return existing;
+        const merged = JSON.parse(JSON.stringify(incoming));
+        merged.poolMatches = mergePoolMatchesPreservingExisting(
+            existing.poolMatches,
+            incoming.poolMatches || {}
+        );
+        if (incoming.bracket || existing.bracket) {
+            merged.bracket = mergeBracketPreservingExisting(existing.bracket, incoming.bracket);
+        }
+        if (existing.tournamentFightHistory && existing.tournamentFightHistory.length &&
+            (!incoming.tournamentFightHistory || incoming.tournamentFightHistory.length <
+                existing.tournamentFightHistory.length)) {
+            merged.tournamentFightHistory = existing.tournamentFightHistory.slice();
+        }
+        return merged;
+    }
+
     function releaseLocksForDevice(deviceId) {
         const keys = Object.keys(state.matchLocks);
         for (let i = 0; i < keys.length; i++) {
@@ -537,7 +646,7 @@ function createSyncServer(options) {
                 sendJson(res, 400, { error: 'tournament object required' });
                 return;
             }
-            state.tournament = body.tournament;
+            state.tournament = mergeTournamentPreservingExisting(state.tournament, body.tournament);
             bumpVersion();
             sendJson(res, 200, { ok: true, state: getPublicState() });
             return;

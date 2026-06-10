@@ -189,6 +189,7 @@
             syncQualifyingAdvancersInputs(defaultCount);
         }
         renderPoolsComposition();
+        updateAdminServerLogButtonVisibility();
         if (typeof global.persistActiveTournamentNominationIfAny === 'function') {
             global.persistActiveTournamentNominationIfAny();
         }
@@ -748,6 +749,67 @@
         if (!shouldUseServerMatchSync()) return Promise.resolve();
         if (NetworkSync.isHost()) return Promise.resolve();
         return NetworkSync.ensureHostRegistered(readHostArenaCountForRegistration());
+    }
+
+    var PLAYOFF_PHASE_ORDER = { side: 0, bronze: 1, final: 2, complete: 3 };
+
+    function mergeBracketMatchPreservingLocal(localMatch, remoteMatch) {
+        if (!localMatch) return remoteMatch ? JSON.parse(JSON.stringify(remoteMatch)) : null;
+        if (!remoteMatch) return JSON.parse(JSON.stringify(localMatch));
+        if (localMatch.status === 'done' && remoteMatch.status !== 'done') {
+            return JSON.parse(JSON.stringify(localMatch));
+        }
+        if (localMatch.status === 'in_progress' &&
+            (remoteMatch.status === 'pending' || !remoteMatch.status)) {
+            return JSON.parse(JSON.stringify(localMatch));
+        }
+        if (localMatch.status === 'done' && remoteMatch.status === 'done') {
+            return JSON.parse(JSON.stringify(localMatch));
+        }
+        return JSON.parse(JSON.stringify(remoteMatch));
+    }
+
+    function mergeBracketPreservingLocalDone(localBracket, remoteBracket) {
+        if (!remoteBracket) {
+            return localBracket ? JSON.parse(JSON.stringify(localBracket)) : null;
+        }
+        if (!localBracket) return JSON.parse(JSON.stringify(remoteBracket));
+
+        var merged = JSON.parse(JSON.stringify(remoteBracket));
+
+        function mergeHalf(sideName) {
+            var localHalf = localBracket[sideName];
+            var remoteHalf = merged[sideName];
+            if (!localHalf || !remoteHalf || !remoteHalf.rounds) return;
+            for (var r = 0; r < remoteHalf.rounds.length; r++) {
+                if (!localHalf.rounds[r]) continue;
+                for (var m = 0; m < remoteHalf.rounds[r].length; m++) {
+                    remoteHalf.rounds[r][m] = mergeBracketMatchPreservingLocal(
+                        localHalf.rounds[r][m],
+                        remoteHalf.rounds[r][m]
+                    );
+                }
+            }
+        }
+
+        mergeHalf('left');
+        mergeHalf('right');
+        merged.thirdPlace = mergeBracketMatchPreservingLocal(
+            localBracket.thirdPlace,
+            merged.thirdPlace
+        );
+        merged.final = mergeBracketMatchPreservingLocal(localBracket.final, merged.final);
+
+        if ((localBracket.activeRoundIndex || 0) > (merged.activeRoundIndex || 0)) {
+            merged.activeRoundIndex = localBracket.activeRoundIndex;
+        }
+        var localPhase = PLAYOFF_PHASE_ORDER[localBracket.playoffPhase || 'side'] || 0;
+        var remotePhase = PLAYOFF_PHASE_ORDER[merged.playoffPhase || 'side'] || 0;
+        if (localPhase > remotePhase) {
+            merged.playoffPhase = localBracket.playoffPhase;
+        }
+
+        return merged;
     }
 
     function mergePoolMatchesPreservingLocalDone(localPm, remotePm) {
@@ -1696,27 +1758,44 @@
 
         var t = remoteState.tournament;
         var inFight = !!(gameState.activePoolMatchId || gameState.activeBracketMatch);
+        var savedStage = gameState.tournamentStage;
+        var savedBracket = gameState.bracket;
+        var savedPoolMatches = gameState.poolMatches;
+        var savedFightHistory = gameState.tournamentFightHistory;
 
         gameState.sessionMode = t.sessionMode || 'tournament';
         gameState.ruleset = t.ruleset;
         gameState.tournamentSystem = t.tournamentSystem;
         gameState.participants = t.participants || [];
-        gameState.tournamentStage = t.tournamentStage;
         gameState.pools = t.pools || [];
-        if (isTournamentHostDevice() && !options.replacePoolMatches) {
-            gameState.poolMatches = mergePoolMatchesPreservingLocalDone(
-                gameState.poolMatches,
-                t.poolMatches || {}
-            );
+
+        if (!inFight) {
+            gameState.tournamentStage = t.tournamentStage;
+            if (isTournamentHostDevice() && !options.replacePoolMatches) {
+                gameState.poolMatches = mergePoolMatchesPreservingLocalDone(
+                    gameState.poolMatches,
+                    t.poolMatches || {}
+                );
+            } else {
+                gameState.poolMatches = t.poolMatches || {};
+            }
+            if (t.bracket) {
+                if (isTournamentHostDevice() && !options.replacePoolMatches) {
+                    gameState.bracket = mergeBracketPreservingLocalDone(gameState.bracket, t.bracket);
+                } else {
+                    gameState.bracket = t.bracket;
+                }
+            }
+            gameState.tournamentFightHistory = t.tournamentFightHistory || [];
         } else {
-            gameState.poolMatches = t.poolMatches || {};
+            gameState.tournamentStage = savedStage;
+            gameState.poolMatches = savedPoolMatches;
+            gameState.bracket = savedBracket;
+            gameState.tournamentFightHistory = savedFightHistory;
         }
-        if (t.bracket) {
-            gameState.bracket = t.bracket;
-        }
+
         gameState.playoffStarted = !!t.playoffStarted;
         gameState.qualifyingAdvancersCount = t.qualifyingAdvancersCount;
-        gameState.tournamentFightHistory = t.tournamentFightHistory || [];
         gameState.tournamentMode = !!t.playoffStarted;
         if (t.hostSelectedArenaId) {
             gameState.hostSelectedArenaId = t.hostSelectedArenaId;
@@ -1921,6 +2000,24 @@
             } else {
                 arenaWrap.classList.add('hidden');
             }
+        }
+
+        updateAdminServerLogButtonVisibility();
+    }
+
+    function updateAdminServerLogButtonVisibility() {
+        var show = typeof MeisterDesktop !== 'undefined' &&
+            isTournamentHostDevice() &&
+            gameState.sessionMode === 'tournament';
+        var ids = [
+            'openServerLogBtn', 'openServerLogBtnBar', 'openServerLogBtnBracket',
+            'openServerLogBtnPools', 'openServerLogBtnParticipants'
+        ];
+        for (var i = 0; i < ids.length; i++) {
+            var btn = document.getElementById(ids[i]);
+            if (!btn) continue;
+            if (show) btn.classList.remove('hidden');
+            else btn.classList.add('hidden');
         }
     }
 
@@ -3788,7 +3885,7 @@
         if (nextRoundIndex >= half.rounds.length) {
             if (loc.side === 'left') gameState.bracket.final.fighter1 = winner;
             else gameState.bracket.final.fighter2 = winner;
-            assignSemiLoserToBronze(side, loc);
+            assignSemiLoserToBronze(loc.side, loc);
             return;
         }
 
@@ -4094,6 +4191,7 @@
         } else {
             arenaWrap.style.display = 'none';
         }
+        updateAdminServerLogButtonVisibility();
     }
 
     function previewBracketDemo(count) {
@@ -4639,10 +4737,10 @@
 
     function onSaveFightHook() {
         if (!isPlayoffTournament()) return false;
-        if (gameState.tournamentStage === 'pool-fights' && gameState.activePoolMatchId) {
+        if (gameState.activePoolMatchId && gameState.activePoolMatchMeta) {
             return saveActivePoolMatchResult();
         }
-        if (gameState.tournamentStage === 'bracket-fights' && gameState.activeBracketMatch) {
+        if (gameState.activeBracketMatch) {
             return saveActiveBracketMatchResult();
         }
         return false;
@@ -4684,6 +4782,7 @@
         showHostBracketManagementModal: showHostBracketManagementModal,
         openBracketSchemeView: openBracketSchemeView,
         updateTournamentBar: updateTournamentBar,
+        updateAdminServerLogButtonVisibility: updateAdminServerLogButtonVisibility,
         resetPlayoffState: resetPlayoffState,
         onSaveFightHook: onSaveFightHook,
         applyRemoteTournamentState: applyRemoteTournamentState,
