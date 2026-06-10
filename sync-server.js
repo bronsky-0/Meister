@@ -287,7 +287,23 @@ function createSyncServer(options) {
         if (!loc) return null;
         if (loc.side === 'bronze') return 'bronze';
         if (loc.side === 'final') return 'final';
-        return 'side:' + loc.roundIndex;
+        if (loc.side === 'left' || loc.side === 'right') {
+            return loc.side + ':' + loc.roundIndex;
+        }
+        return null;
+    }
+
+    function resolveBracketArenaAssignment(tournament, phaseKey) {
+        if (!tournament || !phaseKey) return null;
+        const assignments = tournament.bracketArenaAssignments || {};
+        const direct = assignments[phaseKey];
+        if (direct) return parseInt(direct, 10);
+        if (phaseKey.indexOf('left:') === 0 || phaseKey.indexOf('right:') === 0) {
+            const legacyKey = 'side:' + phaseKey.split(':')[1];
+            const legacy = assignments[legacyKey];
+            if (legacy) return parseInt(legacy, 10);
+        }
+        return null;
     }
 
     function isBracketMatchReadyServer(match) {
@@ -305,7 +321,7 @@ function createSyncServer(options) {
 
         function tryLoc(match, loc) {
             const phaseKey = getBracketPhaseKeyFromLoc(loc);
-            if (!phaseKey || getBracketAssignedArena(tournament, phaseKey) !== arenaId) return null;
+            if (!phaseKey || resolveBracketArenaAssignment(tournament, phaseKey) !== arenaId) return null;
             if (!isBracketMatchReadyServer(match)) return null;
             if (phase === 'side' && loc.side !== 'bronze' && loc.side !== 'final' &&
                 loc.roundIndex !== activeR) {
