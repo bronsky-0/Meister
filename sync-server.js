@@ -830,7 +830,10 @@ function createSyncServer(options) {
             const nominationId = body.nominationId || null;
             const tournament = resolveTournamentSnapshot(nominationId);
             if (!tournament) {
-                sendJson(res, 400, { error: 'Tournament not started' });
+                sendJson(res, 400, {
+                    error: 'Tournament not started',
+                    errorRu: 'Турнир ещё не синхронизирован с сервером. На главном устройстве нажмите «Начать турнир».'
+                });
                 return;
             }
 

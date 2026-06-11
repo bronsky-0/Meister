@@ -29,6 +29,40 @@
         return null;
     }
 
+    function normalizeNominationId(nominationId) {
+        return nominationId === '' || nominationId === undefined ? null : nominationId;
+    }
+
+    function nominationExistsOnServer(remoteState, nominationId) {
+        return !!getNominationSnapshotFromRemote(normalizeNominationId(nominationId), remoteState);
+    }
+
+    function serverHasAnyTournamentData(remoteState) {
+        if (!remoteState) return false;
+        if (remoteState.tournament) return true;
+        var noms = remoteState.nominations || {};
+        return Object.keys(noms).length > 0;
+    }
+
+    function isAnyTournamentStartedOnServer(remoteState) {
+        if (!remoteState) return false;
+        if (remoteState.tournament && remoteState.tournament.playoffStarted) return true;
+        var noms = remoteState.nominations || {};
+        for (var id in noms) {
+            if (!noms.hasOwnProperty(id)) continue;
+            if (noms[id] && noms[id].playoffStarted) return true;
+        }
+        return false;
+    }
+
+    function formatDispatchError(err) {
+        var msg = (err && err.message) ? err.message : 'ошибка';
+        if (msg === 'Tournament not started') {
+            return 'Турнир ещё не синхронизирован с сервером. Дождитесь окончания синхронизации или нажмите «Начать турнир» ещё раз.';
+        }
+        return msg;
+    }
+
     function applySnapshotToGameState(snapshot, context) {
         context = context || {};
         if (!snapshot) return;
@@ -1366,12 +1400,19 @@
         for (var nomId in noms) {
             if (!noms.hasOwnProperty(nomId)) continue;
             if (!isPoolStageSnapshot(noms[nomId])) continue;
-            var item = getNextPendingPoolDispatchItemInSnapshot(noms[nomId], arenaId, nomId || null);
+            var item = getNextPendingPoolDispatchItemInSnapshot(
+                noms[nomId],
+                arenaId,
+                normalizeNominationId(nomId)
+            );
             if (item) return item;
         }
         if (gameState.playoffStarted && !gameState.bracket) {
             var activeId = gameState.activeNominationId;
             if (!activeId || !noms[activeId]) {
+                if (!nominationExistsOnServer(remote, activeId)) {
+                    return null;
+                }
                 return getNextPendingPoolDispatchItemInSnapshot(
                     gameState,
                     arenaId,
@@ -1725,7 +1766,14 @@
     function hostDispatchClaim(item, arenaId, options) {
         if (!item || !arenaId) return Promise.resolve();
         options = options || {};
-        if (item.nominationId) options.nominationId = item.nominationId;
+        var nominationId = normalizeNominationId(
+            item.nominationId || gameState.activeNominationId
+        );
+        if (nominationId) options.nominationId = nominationId;
+        var remote = typeof NetworkSync !== 'undefined' ? NetworkSync.getState().lastRemoteState : null;
+        if (!nominationExistsOnServer(remote, nominationId)) {
+            return Promise.resolve();
+        }
         if (item.type === 'pool') {
             return NetworkSync.claimMatch('pool', {
                 poolId: item.poolId,
@@ -1772,7 +1820,7 @@
             console.warn('dispatchNextFightForArena', err);
             if (err && err.message && err.message.indexOf('Match already done') === -1) {
                 alert('Не удалось назначить бой на площадку ' + arenaId + ': ' +
-                    (err.message || 'ошибка'));
+                    formatDispatchError(err));
             }
         }).finally(function() {
             hostDispatchInFlight = false;
@@ -1886,7 +1934,7 @@
         var titleEl = document.getElementById('arenaWaitTitle');
         if (!waitEl || !hintEl) return;
 
-        if (!remoteState || !remoteState.tournament || !remoteState.tournament.playoffStarted) {
+        if (!remoteState || !isAnyTournamentStartedOnServer(remoteState)) {
             return;
         }
 
@@ -1909,7 +1957,7 @@
             if (titleEl) {
                 titleEl.textContent = 'Площадка ' + arenaId + ' — ожидание хоста';
             }
-            if (!remoteState.tournament || !remoteState.tournament.playoffStarted) {
+            if (!isAnyTournamentStartedOnServer(remoteState)) {
                 hintEl.textContent = 'Турнир ещё не начат. Главное устройство настраивает или запускает плей-офф.';
             } else if (isPoolStageActive()) {
                 if (!arenaHasAssignedPool(arenaId)) {
@@ -2140,7 +2188,8 @@
 
         var t = resolveRemoteTournamentPayload(remoteState);
         if (!t) {
-            if (!options.skipAutoJoin && isNetworkHost()) {
+            if (!options.skipAutoJoin && isNetworkHost() &&
+                serverHasAnyTournamentData(remoteState)) {
                 dispatchForAllActiveArenas();
             }
             return;
@@ -3674,6 +3723,10 @@
         }
 
         renderHostPoolButtons();
+        var backBtn = document.querySelector('#poolSelectOverlay .overlay-toolbar-actions .menu-button.back');
+        if (backBtn) {
+            backBtn.textContent = isHostAdminOnlyMode() ? 'К номинациям' : 'Назад';
+        }
         document.getElementById('poolSelectOverlay').style.display = 'flex';
         updateTournamentBar();
     }
@@ -4170,6 +4223,7 @@
         syncTournamentToServer().then(function() {
             showPoolSelectModal();
             updateTournamentBar();
+            return dispatchForAllActiveArenas();
         });
     }
 
@@ -5287,6 +5341,9 @@
         hidePoolSelectModal();
         if (isHostAdminOnlyMode() && gameState.playoffStarted) {
             hideSecretaryTerminal();
+            if (typeof global.backFromNominationSetup === 'function') {
+                global.backFromNominationSetup();
+            }
             return;
         }
         document.getElementById('poolsOverlay').style.display = 'flex';
