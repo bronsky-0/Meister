@@ -100,7 +100,7 @@
         return fetch(apiUrl(path), options || {}).then(function(res) {
             return res.json().then(function(data) {
                 if (!res.ok) {
-                    var err = new Error(data.error || ('HTTP ' + res.status));
+                    var err = new Error(data.errorRu || data.error || ('HTTP ' + res.status));
                     err.status = res.status;
                     err.data = data;
                     throw err;
