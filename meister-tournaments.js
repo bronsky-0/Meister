@@ -55,7 +55,10 @@
             bracket: null,
             playoffStarted: false,
             qualifyingAdvancersCount: null,
-            tournamentFightHistory: []
+            tournamentFightHistory: [],
+            poolArenaAssignments: {},
+            bracketArenaAssignments: {},
+            networkActive: false
         };
     }
 
@@ -118,12 +121,14 @@
             poolArenaAssignments: gs.poolArenaAssignments ? JSON.parse(JSON.stringify(gs.poolArenaAssignments)) : {},
             bracketArenaAssignments: gs.bracketArenaAssignments
                 ? JSON.parse(JSON.stringify(gs.bracketArenaAssignments))
-                : {}
+                : {},
+            networkActive: !!gs.networkActive
         };
     }
 
     function applyNominationToGameState(gs, nomination) {
         if (!nomination) return;
+        gs.activeNominationName = nomination.name || '';
         gs.ruleset = nomination.ruleset;
         gs.tournamentSystem = nomination.tournamentSystem || null;
         gs.participants = nomination.participants ? JSON.parse(JSON.stringify(nomination.participants)) : [];
@@ -145,6 +150,7 @@
             ? JSON.parse(JSON.stringify(nomination.bracketArenaAssignments))
             : {};
         gs.tournamentMode = !!nomination.playoffStarted;
+        gs.networkActive = !!nomination.networkActive;
     }
 
     function persistActiveNominationFromGameState(gs) {
@@ -171,7 +177,46 @@
         nomination.bracketArenaAssignments = patch.bracketArenaAssignments
             ? JSON.parse(JSON.stringify(patch.bracketArenaAssignments))
             : {};
+        if (patch.networkActive !== undefined) {
+            nomination.networkActive = patch.networkActive;
+        }
 
+        updateTournament(found.tournament);
+        return true;
+    }
+
+    function getNominationAssignedArenas(nomination) {
+        if (!nomination) return [];
+        var ids = {};
+        var poolAssign = nomination.poolArenaAssignments || {};
+        for (var poolId in poolAssign) {
+            if (!poolAssign.hasOwnProperty(poolId)) continue;
+            var a = parseInt(poolAssign[poolId], 10);
+            if (a > 0) ids[a] = true;
+        }
+        var bracketAssign = nomination.bracketArenaAssignments || {};
+        for (var phaseKey in bracketAssign) {
+            if (!bracketAssign.hasOwnProperty(phaseKey)) continue;
+            var b = parseInt(bracketAssign[phaseKey], 10);
+            if (b > 0) ids[b] = true;
+        }
+        return Object.keys(ids).map(function(k) { return parseInt(k, 10); }).sort(function(x, y) {
+            return x - y;
+        });
+    }
+
+    function getNominationArenaLabel(nomination) {
+        var arenas = getNominationAssignedArenas(nomination);
+        if (!arenas.length) return '';
+        return 'пл. ' + arenas.join(', ');
+    }
+
+    function setNominationNetworkActive(tournamentId, nominationId, active) {
+        var found = findTournament(tournamentId);
+        if (!found) return false;
+        var nomination = findNomination(found.tournament, nominationId);
+        if (!nomination) return false;
+        nomination.networkActive = !!active;
         updateTournament(found.tournament);
         return true;
     }
@@ -182,6 +227,7 @@
             nomination.bracket.final.winner) {
             return 'Завершена';
         }
+        if (nomination.networkActive && nomination.playoffStarted) return 'В сети';
         if (nomination.playoffStarted) return 'Идёт турнир';
         if (nomination.pools && nomination.pools.length) return 'Пулы';
         if (nomination.participants && nomination.participants.length >= 2) return 'Участники';
@@ -216,7 +262,10 @@
         persistActiveNominationFromGameState: persistActiveNominationFromGameState,
         getNominationProgressLabel: getNominationProgressLabel,
         getResumeAction: getResumeAction,
-        createEmptyNominationState: createEmptyNominationState
+        createEmptyNominationState: createEmptyNominationState,
+        getNominationAssignedArenas: getNominationAssignedArenas,
+        getNominationArenaLabel: getNominationArenaLabel,
+        setNominationNetworkActive: setNominationNetworkActive
     };
 
     global.persistActiveTournamentNominationIfAny = function() {
