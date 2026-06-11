@@ -82,7 +82,9 @@ function createSyncServer(options) {
         version: 0,
         arenaCount: 0,
         hostDeviceId: null,
+        activeTournamentId: null,
         tournament: null,
+        nominations: {},
         devices: {},
         matchLocks: {}
     };
@@ -98,10 +100,67 @@ function createSyncServer(options) {
             version: state.version,
             arenaCount: state.arenaCount,
             hostDeviceId: state.hostDeviceId,
+            activeTournamentId: state.activeTournamentId || null,
             tournament: state.tournament,
+            nominations: state.nominations || {},
             devices: state.devices,
             matchLocks: state.matchLocks
         };
+    }
+
+    function ensureNominationsMap() {
+        if (!state.nominations) state.nominations = {};
+        return state.nominations;
+    }
+
+    function hasAnyTournamentData() {
+        if (state.tournament) return true;
+        const map = state.nominations || {};
+        return Object.keys(map).length > 0;
+    }
+
+    function resolveTournamentSnapshot(nominationId) {
+        if (nominationId) {
+            return ensureNominationsMap()[nominationId] || null;
+        }
+        return state.tournament;
+    }
+
+    function upsertTournamentSnapshot(nominationId, incoming, options) {
+        options = options || {};
+        if (!incoming) return null;
+        if (nominationId) {
+            const map = ensureNominationsMap();
+            map[nominationId] = mergeTournamentPreservingExisting(map[nominationId], incoming);
+            if (incoming.poolArenaAssignments !== undefined) {
+                map[nominationId].poolArenaAssignments =
+                    JSON.parse(JSON.stringify(incoming.poolArenaAssignments));
+            }
+            if (incoming.bracketArenaAssignments !== undefined) {
+                map[nominationId].bracketArenaAssignments =
+                    JSON.parse(JSON.stringify(incoming.bracketArenaAssignments));
+            }
+            if (incoming.nominationName) {
+                map[nominationId].nominationName = incoming.nominationName;
+            }
+            return map[nominationId];
+        }
+        state.tournament = mergeTournamentPreservingExisting(state.tournament, incoming);
+        if (incoming.poolArenaAssignments !== undefined) {
+            state.tournament.poolArenaAssignments =
+                JSON.parse(JSON.stringify(incoming.poolArenaAssignments));
+        }
+        if (incoming.bracketArenaAssignments !== undefined) {
+            state.tournament.bracketArenaAssignments =
+                JSON.parse(JSON.stringify(incoming.bracketArenaAssignments));
+        }
+        return state.tournament;
+    }
+
+    function listNominationIds() {
+        const ids = Object.keys(ensureNominationsMap());
+        if (!ids.length && state.tournament) return [null];
+        return ids;
     }
 
     function broadcastState() {
@@ -117,12 +176,77 @@ function createSyncServer(options) {
         broadcastState();
     }
 
-    function poolMatchKey(poolId, matchId) {
+    function poolMatchKey(nominationId, poolId, matchId) {
+        if (nominationId) {
+            return 'nom:' + nominationId + ':pool:' + poolId + ':' + matchId;
+        }
         return 'pool:' + poolId + ':' + matchId;
     }
 
-    function bracketMatchKey(loc) {
+    function bracketMatchKey(nominationId, loc) {
+        if (nominationId) {
+            return 'nom:' + nominationId + ':bracket:' + loc.side + ':' +
+                loc.roundIndex + ':' + loc.matchIndex;
+        }
         return 'bracket:' + loc.side + ':' + loc.roundIndex + ':' + loc.matchIndex;
+    }
+
+    function parseMatchKeyServer(matchKey) {
+        if (!matchKey) return null;
+        if (matchKey.indexOf('nom:') === 0) {
+            const poolMarker = ':pool:';
+            const bracketMarker = ':bracket:';
+            const poolIdx = matchKey.indexOf(poolMarker);
+            if (poolIdx !== -1) {
+                const nominationId = matchKey.slice(4, poolIdx);
+                const rest = matchKey.slice(poolIdx + poolMarker.length);
+                const sep = rest.indexOf(':');
+                if (sep === -1) return null;
+                return {
+                    nominationId: nominationId,
+                    type: 'pool',
+                    poolId: rest.slice(0, sep),
+                    matchId: rest.slice(sep + 1)
+                };
+            }
+            const bracketIdx = matchKey.indexOf(bracketMarker);
+            if (bracketIdx !== -1) {
+                const nominationId = matchKey.slice(4, bracketIdx);
+                const parts = matchKey.slice(bracketIdx + bracketMarker.length).split(':');
+                if (parts.length < 3) return null;
+                return {
+                    nominationId: nominationId,
+                    type: 'bracket',
+                    bracketLoc: {
+                        side: parts[0],
+                        roundIndex: parseInt(parts[1], 10),
+                        matchIndex: parseInt(parts[2], 10)
+                    }
+                };
+            }
+            return null;
+        }
+        const parts = matchKey.split(':');
+        if (parts[0] === 'pool' && parts.length >= 3) {
+            return {
+                nominationId: null,
+                type: 'pool',
+                poolId: parts[1],
+                matchId: parts.slice(2).join(':')
+            };
+        }
+        if (parts[0] === 'bracket' && parts.length >= 4) {
+            return {
+                nominationId: null,
+                type: 'bracket',
+                bracketLoc: {
+                    side: parts[1],
+                    roundIndex: parseInt(parts[2], 10),
+                    matchIndex: parseInt(parts[3], 10)
+                }
+            };
+        }
+        return null;
     }
 
     function readJsonBody(req) {
@@ -371,17 +495,19 @@ function createSyncServer(options) {
         return null;
     }
 
-    function hostClaimPoolMatchForArena(arenaId, poolId, matchId) {
-        if (!state.hostDeviceId || !state.tournament) return null;
-        const match = findPoolMatch(state.tournament, poolId, matchId);
+    function hostClaimPoolMatchForArena(nominationId, arenaId, poolId, matchId) {
+        const tournament = resolveTournamentSnapshot(nominationId);
+        if (!state.hostDeviceId || !tournament) return null;
+        const match = findPoolMatch(tournament, poolId, matchId);
         if (!match || match.status !== 'pending') return null;
-        const matchKey = poolMatchKey(poolId, matchId);
+        const matchKey = poolMatchKey(nominationId, poolId, matchId);
         if (state.matchLocks[matchKey]) return null;
         match.status = 'in_progress';
         match.arenaId = arenaId;
         state.matchLocks[matchKey] = {
             deviceId: state.hostDeviceId,
             arenaId: arenaId,
+            nominationId: nominationId || null,
             matchType: 'pool',
             poolId: poolId,
             matchId: matchId,
@@ -392,13 +518,21 @@ function createSyncServer(options) {
         return matchKey;
     }
 
-    function autoDispatchNextPoolFightForArena(arenaId) {
-        if (!state.hostDeviceId || !isPoolStageTournament(state.tournament)) return;
+    function autoDispatchNextPoolFightForNominationArena(nominationId, arenaId) {
+        const tournament = resolveTournamentSnapshot(nominationId);
+        if (!state.hostDeviceId || !isPoolStageTournament(tournament)) return;
         arenaId = parseInt(arenaId, 10);
-        if (!arenaId || areArenaPoolFightsComplete(state.tournament, arenaId)) return;
-        const next = findNextPendingPoolMatchForArena(state.tournament, arenaId);
+        if (!arenaId || areArenaPoolFightsComplete(tournament, arenaId)) return;
+        const next = findNextPendingPoolMatchForArena(tournament, arenaId);
         if (next) {
-            hostClaimPoolMatchForArena(arenaId, next.poolId, next.matchId);
+            hostClaimPoolMatchForArena(nominationId, arenaId, next.poolId, next.matchId);
+        }
+    }
+
+    function autoDispatchNextPoolFightForArena(arenaId) {
+        const ids = listNominationIds();
+        for (let i = 0; i < ids.length; i++) {
+            autoDispatchNextPoolFightForNominationArena(ids[i], arenaId);
         }
     }
 
@@ -477,17 +611,19 @@ function createSyncServer(options) {
         return found;
     }
 
-    function hostClaimBracketMatchForArena(arenaId, loc) {
-        if (!state.hostDeviceId || !state.tournament || !loc) return null;
-        const match = getBracketMatch(state.tournament, loc);
+    function hostClaimBracketMatchForArena(nominationId, arenaId, loc) {
+        const tournament = resolveTournamentSnapshot(nominationId);
+        if (!state.hostDeviceId || !tournament || !loc) return null;
+        const match = getBracketMatch(tournament, loc);
         if (!match || match.status !== 'pending') return null;
-        const matchKey = bracketMatchKey(loc);
+        const matchKey = bracketMatchKey(nominationId, loc);
         if (state.matchLocks[matchKey]) return null;
         match.status = 'in_progress';
         match.arenaId = arenaId;
         state.matchLocks[matchKey] = {
             deviceId: state.hostDeviceId,
             arenaId: arenaId,
+            nominationId: nominationId || null,
             matchType: 'bracket',
             poolId: null,
             matchId: null,
@@ -498,13 +634,21 @@ function createSyncServer(options) {
         return matchKey;
     }
 
-    function autoDispatchNextBracketFightForArena(arenaId) {
-        if (!state.hostDeviceId || !state.tournament || !state.tournament.bracket) return;
+    function autoDispatchNextBracketFightForNominationArena(nominationId, arenaId) {
+        const tournament = resolveTournamentSnapshot(nominationId);
+        if (!state.hostDeviceId || !tournament || !tournament.bracket) return;
         arenaId = parseInt(arenaId, 10);
         if (!arenaId) return;
-        const next = findNextPendingBracketMatchForArena(state.tournament, arenaId);
+        const next = findNextPendingBracketMatchForArena(tournament, arenaId);
         if (next) {
-            hostClaimBracketMatchForArena(arenaId, next.loc);
+            hostClaimBracketMatchForArena(nominationId, arenaId, next.loc);
+        }
+    }
+
+    function autoDispatchNextBracketFightForArena(arenaId) {
+        const ids = listNominationIds();
+        for (let i = 0; i < ids.length; i++) {
+            autoDispatchNextBracketFightForNominationArena(ids[i], arenaId);
         }
     }
 
@@ -552,7 +696,7 @@ function createSyncServer(options) {
                 port: port,
                 ips: getLocalIps(),
                 version: state.version,
-                hasTournament: !!state.tournament,
+                hasTournament: hasAnyTournamentData(),
                 arenaCount: state.arenaCount
             });
             return;
@@ -662,15 +806,11 @@ function createSyncServer(options) {
                 sendJson(res, 400, { error: 'tournament object required' });
                 return;
             }
-            state.tournament = mergeTournamentPreservingExisting(state.tournament, body.tournament);
-            if (body.tournament.poolArenaAssignments !== undefined) {
-                state.tournament.poolArenaAssignments =
-                    JSON.parse(JSON.stringify(body.tournament.poolArenaAssignments));
+            const nominationId = body.nominationId || null;
+            if (body.tournamentId) {
+                state.activeTournamentId = body.tournamentId;
             }
-            if (body.tournament.bracketArenaAssignments !== undefined) {
-                state.tournament.bracketArenaAssignments =
-                    JSON.parse(JSON.stringify(body.tournament.bracketArenaAssignments));
-            }
+            upsertTournamentSnapshot(nominationId, body.tournament);
             bumpVersion();
             sendJson(res, 200, { ok: true, state: getPublicState() });
             return;
@@ -687,7 +827,9 @@ function createSyncServer(options) {
                 sendJson(res, 400, { error: 'arenaId required' });
                 return;
             }
-            if (!state.tournament) {
+            const nominationId = body.nominationId || null;
+            const tournament = resolveTournamentSnapshot(nominationId);
+            if (!tournament) {
                 sendJson(res, 400, { error: 'Tournament not started' });
                 return;
             }
@@ -696,20 +838,20 @@ function createSyncServer(options) {
             let match;
 
             if (body.matchType === 'pool') {
-                match = findPoolMatch(state.tournament, body.poolId, body.matchId);
+                match = findPoolMatch(tournament, body.poolId, body.matchId);
                 if (!match) {
                     sendJson(res, 404, { error: 'Match not found' });
                     return;
                 }
-                matchKey = poolMatchKey(body.poolId, body.matchId);
+                matchKey = poolMatchKey(nominationId, body.poolId, body.matchId);
             } else if (body.matchType === 'bracket') {
                 const loc = body.bracketLoc;
-                match = getBracketMatch(state.tournament, loc);
+                match = getBracketMatch(tournament, loc);
                 if (!match) {
                     sendJson(res, 404, { error: 'Bracket match not found' });
                     return;
                 }
-                matchKey = bracketMatchKey(loc);
+                matchKey = bracketMatchKey(nominationId, loc);
             } else {
                 sendJson(res, 400, { error: 'matchType required' });
                 return;
@@ -738,6 +880,7 @@ function createSyncServer(options) {
             state.matchLocks[matchKey] = {
                 deviceId: body.deviceId,
                 arenaId: arenaId,
+                nominationId: nominationId || null,
                 matchType: body.matchType,
                 poolId: body.poolId || null,
                 matchId: body.matchId || null,
@@ -805,15 +948,21 @@ function createSyncServer(options) {
                 return;
             }
 
-            state.tournament = mergeTournamentPreservingExisting(state.tournament, body.tournament);
+            const parsedKey = parseMatchKeyServer(matchKey);
+            const nominationId = body.nominationId ||
+                (parsedKey && parsedKey.nominationId) ||
+                (lock && lock.nominationId) ||
+                null;
+            upsertTournamentSnapshot(nominationId, body.tournament);
             if (matchKey && state.matchLocks[matchKey]) {
                 delete state.matchLocks[matchKey];
             }
             if (device.role === 'arena' && device.arenaId) {
-                if (isPoolStageTournament(state.tournament)) {
-                    autoDispatchNextPoolFightForArena(device.arenaId);
-                } else if (state.tournament && state.tournament.bracket) {
-                    autoDispatchNextBracketFightForArena(device.arenaId);
+                const tournament = resolveTournamentSnapshot(nominationId);
+                if (isPoolStageTournament(tournament)) {
+                    autoDispatchNextPoolFightForNominationArena(nominationId, device.arenaId);
+                } else if (tournament && tournament.bracket) {
+                    autoDispatchNextBracketFightForNominationArena(nominationId, device.arenaId);
                 }
             }
             bumpVersion();

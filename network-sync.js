@@ -18,6 +18,7 @@
         remoteVersion: 0,
         eventSource: null,
         activeMatchKey: null,
+        activeNominationId: null,
         lastRemoteState: null,
         hostDeviceId: null
     };
@@ -440,7 +441,23 @@
         });
     }
 
-    function pushTournament(tournament) {
+    function buildMatchKey(nominationId, matchType, refs) {
+        if (matchType === 'pool') {
+            if (nominationId) {
+                return 'nom:' + nominationId + ':pool:' + refs.poolId + ':' + refs.matchId;
+            }
+            return 'pool:' + refs.poolId + ':' + refs.matchId;
+        }
+        var loc = refs.bracketLoc;
+        if (nominationId) {
+            return 'nom:' + nominationId + ':bracket:' + loc.side + ':' +
+                loc.roundIndex + ':' + loc.matchIndex;
+        }
+        return 'bracket:' + loc.side + ':' + loc.roundIndex + ':' + loc.matchIndex;
+    }
+
+    function pushTournament(tournament, meta) {
+        meta = meta || {};
         if (networkState.role !== 'host') {
             return Promise.reject(new Error('Только главное устройство'));
         }
@@ -449,7 +466,9 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 deviceId: networkState.deviceId,
-                tournament: tournament
+                tournament: tournament,
+                nominationId: meta.nominationId || tournament.nominationId || null,
+                tournamentId: meta.tournamentId || null
             })
         }).then(function(data) {
             if (data && data.state) {
@@ -462,21 +481,23 @@
 
     function claimMatch(matchType, refs, arenaId, options) {
         options = options || {};
+        var nominationId = options.nominationId || refs.nominationId || null;
         var body = {
             deviceId: networkState.deviceId,
             matchType: matchType,
             arenaId: arenaId || networkState.arenaId,
+            nominationId: nominationId,
             reopen: !!options.reopen
         };
         if (matchType === 'pool') {
             body.poolId = refs.poolId;
             body.matchId = refs.matchId;
-            networkState.activeMatchKey = 'pool:' + refs.poolId + ':' + refs.matchId;
+            networkState.activeMatchKey = buildMatchKey(nominationId, 'pool', refs);
         } else {
             body.bracketLoc = refs.bracketLoc;
-            var loc = refs.bracketLoc;
-            networkState.activeMatchKey = 'bracket:' + loc.side + ':' + loc.roundIndex + ':' + loc.matchIndex;
+            networkState.activeMatchKey = buildMatchKey(nominationId, 'bracket', refs);
         }
+        networkState.activeNominationId = nominationId;
         return fetchJson('/api/match/claim', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -490,17 +511,22 @@
         });
     }
 
-    function completeMatch(tournament) {
+    function completeMatch(tournament, meta) {
+        meta = meta || {};
+        var nominationId = meta.nominationId || tournament.nominationId ||
+            networkState.activeNominationId || null;
         return fetchJson('/api/match/complete', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 deviceId: networkState.deviceId,
                 matchKey: networkState.activeMatchKey,
+                nominationId: nominationId,
                 tournament: tournament
             })
         }).then(function(data) {
             networkState.activeMatchKey = null;
+            networkState.activeNominationId = null;
             if (data && data.state) {
                 networkState.remoteVersion = data.state.version || networkState.remoteVersion;
                 notifyState(data.state);
@@ -509,8 +535,9 @@
         });
     }
 
-    function joinMatch(matchKey) {
+    function joinMatch(matchKey, nominationId) {
         networkState.activeMatchKey = matchKey;
+        networkState.activeNominationId = nominationId || null;
         return fetchJson('/api/match/join', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -555,7 +582,9 @@
             tournamentFightHistory: gs.tournamentFightHistory,
             hostSelectedArenaId: gs.hostSelectedArenaId || null,
             poolArenaAssignments: gs.poolArenaAssignments || {},
-            bracketArenaAssignments: gs.bracketArenaAssignments || {}
+            bracketArenaAssignments: gs.bracketArenaAssignments || {},
+            nominationId: gs.activeNominationId || null,
+            nominationName: gs.activeNominationName || ''
         }));
     }
 
@@ -610,6 +639,7 @@
         completeMatch: completeMatch,
         releaseMatch: releaseMatch,
         getTournamentSnapshot: getTournamentSnapshot,
+        buildMatchKey: buildMatchKey,
         setDeviceName: setDeviceName,
         isNetworkEnabled: isNetworkEnabled,
         isServerLinked: isServerLinked,
