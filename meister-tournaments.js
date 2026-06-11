@@ -126,6 +126,35 @@
         };
     }
 
+    function buildNetworkSnapshotFromNomination(nomination) {
+        if (!nomination) return null;
+        return {
+            sessionMode: 'tournament',
+            ruleset: nomination.ruleset,
+            tournamentSystem: nomination.tournamentSystem || null,
+            participants: nomination.participants ? JSON.parse(JSON.stringify(nomination.participants)) : [],
+            tournamentStage: nomination.tournamentStage || null,
+            pools: nomination.pools ? JSON.parse(JSON.stringify(nomination.pools)) : [],
+            poolMatches: nomination.poolMatches ? JSON.parse(JSON.stringify(nomination.poolMatches)) : {},
+            bracket: nomination.bracket ? JSON.parse(JSON.stringify(nomination.bracket)) : null,
+            playoffStarted: !!nomination.playoffStarted,
+            qualifyingAdvancersCount: nomination.qualifyingAdvancersCount != null
+                ? nomination.qualifyingAdvancersCount
+                : null,
+            tournamentFightHistory: nomination.tournamentFightHistory
+                ? nomination.tournamentFightHistory.slice()
+                : [],
+            poolArenaAssignments: nomination.poolArenaAssignments
+                ? JSON.parse(JSON.stringify(nomination.poolArenaAssignments))
+                : {},
+            bracketArenaAssignments: nomination.bracketArenaAssignments
+                ? JSON.parse(JSON.stringify(nomination.bracketArenaAssignments))
+                : {},
+            nominationId: nomination.id,
+            nominationName: nomination.name || ''
+        };
+    }
+
     function applyNominationToGameState(gs, nomination) {
         if (!nomination) return;
         gs.activeNominationName = nomination.name || '';
@@ -265,7 +294,8 @@
         createEmptyNominationState: createEmptyNominationState,
         getNominationAssignedArenas: getNominationAssignedArenas,
         getNominationArenaLabel: getNominationArenaLabel,
-        setNominationNetworkActive: setNominationNetworkActive
+        setNominationNetworkActive: setNominationNetworkActive,
+        buildNetworkSnapshotFromNomination: buildNetworkSnapshotFromNomination
     };
 
     global.persistActiveTournamentNominationIfAny = function() {
