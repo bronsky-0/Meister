@@ -32,6 +32,7 @@
       "sync-server.js",
       "network-sync.js",
       "tournament-playoff.js",
+      "tournament-swiss.js",
       "display_screen.html",
       "meister-theme.css",
       "meister-tournaments.js",

@@ -58,7 +58,10 @@
             tournamentFightHistory: [],
             poolArenaAssignments: {},
             bracketArenaAssignments: {},
-            networkActive: false
+            networkActive: false,
+            swissRounds: [],
+            currentSwissRound: 1,
+            swissStarted: false
         };
     }
 
@@ -122,7 +125,10 @@
             bracketArenaAssignments: gs.bracketArenaAssignments
                 ? JSON.parse(JSON.stringify(gs.bracketArenaAssignments))
                 : {},
-            networkActive: !!gs.networkActive
+            networkActive: !!gs.networkActive,
+            swissRounds: gs.swissRounds ? JSON.parse(JSON.stringify(gs.swissRounds)) : [],
+            currentSwissRound: gs.currentSwissRound != null ? gs.currentSwissRound : 1,
+            swissStarted: !!gs.swissStarted
         };
     }
 
@@ -150,6 +156,9 @@
             bracketArenaAssignments: nomination.bracketArenaAssignments
                 ? JSON.parse(JSON.stringify(nomination.bracketArenaAssignments))
                 : {},
+            swissRounds: nomination.swissRounds ? JSON.parse(JSON.stringify(nomination.swissRounds)) : [],
+            currentSwissRound: nomination.currentSwissRound != null ? nomination.currentSwissRound : 1,
+            swissStarted: !!nomination.swissStarted,
             nominationId: nomination.id,
             nominationName: nomination.name || ''
         };
@@ -178,7 +187,10 @@
         gs.bracketArenaAssignments = nomination.bracketArenaAssignments
             ? JSON.parse(JSON.stringify(nomination.bracketArenaAssignments))
             : {};
-        gs.tournamentMode = !!nomination.playoffStarted;
+        gs.swissRounds = nomination.swissRounds ? JSON.parse(JSON.stringify(nomination.swissRounds)) : [];
+        gs.currentSwissRound = nomination.currentSwissRound != null ? nomination.currentSwissRound : 1;
+        gs.swissStarted = !!nomination.swissStarted;
+        gs.tournamentMode = !!(nomination.playoffStarted || nomination.swissStarted);
         gs.networkActive = !!nomination.networkActive;
     }
 
@@ -209,6 +221,9 @@
         if (patch.networkActive !== undefined) {
             nomination.networkActive = patch.networkActive;
         }
+        nomination.swissRounds = patch.swissRounds ? JSON.parse(JSON.stringify(patch.swissRounds)) : [];
+        nomination.currentSwissRound = patch.currentSwissRound != null ? patch.currentSwissRound : 1;
+        nomination.swissStarted = !!patch.swissStarted;
 
         updateTournament(found.tournament);
         return true;
@@ -252,11 +267,17 @@
 
     function getNominationProgressLabel(nomination) {
         if (!nomination.tournamentSystem) return 'Не настроена';
+        if (nomination.tournamentSystem === 'swiss' && nomination.tournamentStage === 'swiss-finished') {
+            return 'Завершена';
+        }
         if (nomination.playoffStarted && nomination.bracket && nomination.bracket.final &&
             nomination.bracket.final.winner) {
             return 'Завершена';
         }
-        if (nomination.networkActive && nomination.playoffStarted) return 'В сети';
+        if (nomination.networkActive && (nomination.playoffStarted || nomination.swissStarted)) {
+            return 'В сети';
+        }
+        if (nomination.swissStarted) return 'Круг ' + (nomination.currentSwissRound || 1);
         if (nomination.playoffStarted) return 'Идёт турнир';
         if (nomination.pools && nomination.pools.length) return 'Пулы';
         if (nomination.participants && nomination.participants.length >= 2) return 'Участники';
@@ -265,6 +286,14 @@
 
     function getResumeAction(nomination) {
         if (!nomination.tournamentSystem) return 'system';
+        if (nomination.tournamentSystem === 'swiss') {
+            if (nomination.tournamentStage === 'swiss-finished') return 'swiss-rankings';
+            if (nomination.swissStarted) {
+                if (nomination.tournamentStage === 'swiss-setup') return 'swiss-setup';
+                return 'swiss-fights';
+            }
+            if (nomination.participants && nomination.participants.length >= 2) return 'swiss-setup';
+        }
         if (nomination.playoffStarted) {
             if (nomination.bracket) return 'bracket';
             return 'pool-select';

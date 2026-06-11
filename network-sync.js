@@ -583,6 +583,9 @@
             hostSelectedArenaId: gs.hostSelectedArenaId || null,
             poolArenaAssignments: gs.poolArenaAssignments || {},
             bracketArenaAssignments: gs.bracketArenaAssignments || {},
+            swissRounds: gs.swissRounds || [],
+            currentSwissRound: gs.currentSwissRound != null ? gs.currentSwissRound : 1,
+            swissStarted: !!gs.swissStarted,
             nominationId: gs.activeNominationId || null,
             nominationName: gs.activeNominationName || ''
         }));
