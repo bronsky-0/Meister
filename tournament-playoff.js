@@ -127,7 +127,14 @@
         gameState.bracketArenaAssignments = snapshot.bracketArenaAssignments
             ? JSON.parse(JSON.stringify(snapshot.bracketArenaAssignments))
             : {};
-        gameState.tournamentMode = !!snapshot.playoffStarted;
+        gameState.swissRounds = snapshot.swissRounds
+            ? JSON.parse(JSON.stringify(snapshot.swissRounds))
+            : [];
+        gameState.currentSwissRound = snapshot.currentSwissRound != null
+            ? snapshot.currentSwissRound
+            : 1;
+        gameState.swissStarted = !!snapshot.swissStarted;
+        gameState.tournamentMode = !!(snapshot.playoffStarted || snapshot.swissStarted);
         gameState.networkActive = !!snapshot.networkActive;
     }
 
@@ -5769,6 +5776,11 @@
     }
 
     function playoffGoBack() {
+        if (typeof TournamentSwiss !== 'undefined' && TournamentSwiss.isSwissSessionActive &&
+            TournamentSwiss.isSwissSessionActive()) {
+            TournamentSwiss.swissGoBack();
+            return;
+        }
         if (!isPlayoffSessionActive()) return;
 
         var bracketVisible = document.getElementById('bracketOverlay').style.display === 'flex';
